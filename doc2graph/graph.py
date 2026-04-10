@@ -5,6 +5,7 @@ Build a graph from documents (via loaders + extractors) or directly,
 then call .rank() to extract a ranked subgraph for LLM context.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from .ranking import personalized_page_rank
@@ -96,12 +97,20 @@ class DocumentGraph:
         ...     {"title": "Guido van Rossum", "content": "Creator of Python..."},
         ... ])
         """
+        from .extractors.links import detect_cross_doc_links
         instance = cls()
         for item in texts:
             title = item.get("title", "")
             content = item.get("content", "")
-            node_id = title.lower().replace(" ", "_")
+            node_id = re.sub(r"\W+", "_", title.lower()).strip("_")
             instance.add_node(node_id, title, content=content)
+
+        # Detect cross-document mentions and add edges
+        # e.g. "Python" article mentions "Guido van Rossum" → edge Python→Guido
+        cross_links = detect_cross_doc_links(instance._nodes)
+        for edge in cross_links:
+            instance._edges.append(edge)
+
         return instance
 
     def add_node(
