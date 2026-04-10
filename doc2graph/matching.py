@@ -55,11 +55,15 @@ def soft_match_score(
     label_stems = stemmed_tokens(label)
     score += sum(1 for t in label_stems if t in query_stems) * 2.0
 
-    # Content match — 1x, use first 500 chars to avoid biasing long docs
+    # Content match — search full content, normalize by unique token count
+    # to avoid biasing toward longer documents over shorter ones.
     if content:
-        preview = content[:500]
-        content_stems = stemmed_tokens(preview)
-        score += sum(1 for t in content_stems if t in query_stems) * 1.0
+        content_stems = stemmed_tokens(content)
+        hits = sum(1 for t in content_stems if t in query_stems)
+        if hits > 0:
+            # Normalize: same hit count in a shorter doc = higher relevance
+            norm = max(1.0, (len(content_stems) / 50) ** 0.5)
+            score += (hits / norm) * 1.0
 
     # Attribute string values
     if attributes:
