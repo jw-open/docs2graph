@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "doc2graph"
-version = "0.2.0"
+version = "0.3.0"
 description = "Extract knowledge graphs from documents. Rank relevant nodes with Personalized PageRank for LLM context. No LLM dependency — bring your own model."
 readme = "README.md"
 license = "Apache-2.0"
@@ -28,6 +28,12 @@ pdf = [
     "pytesseract>=0.3.10",
     "Pillow>=9.0",
     "pdf2image>=1.16",
+]
+docx = [
+    "python-docx>=0.8.11",
+]
+pptx = [
+    "python-pptx>=0.6.21",
 ]
 
 [project.urls]
