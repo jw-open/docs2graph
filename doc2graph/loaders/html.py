@@ -96,7 +96,10 @@ def load_html(path: str) -> str:
     if p.suffix.lower() not in {".html", ".htm"}:
         raise ValueError(f"Expected an .html/.htm file, got '{p.suffix}'")
 
-    raw_html = p.read_text(encoding="utf-8", errors="replace")
+    from .text import _detect_encoding
+    raw = p.read_bytes()
+    enc = _detect_encoding(raw)
+    raw_html = raw.decode(enc, errors="replace")
     return parse_html_string(raw_html)
 
 

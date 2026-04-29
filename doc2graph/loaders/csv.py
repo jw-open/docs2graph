@@ -66,7 +66,10 @@ def load_csv(
 
     parts: List[str] = []
 
-    with p.open(encoding="utf-8", errors="replace", newline="") as f:
+    from .text import _detect_encoding
+    detected_enc = _detect_encoding(p.read_bytes())
+
+    with p.open(encoding=detected_enc, errors="replace", newline="") as f:
         reader = _csv.DictReader(f, delimiter=delimiter)
         headers = reader.fieldnames or []
 
