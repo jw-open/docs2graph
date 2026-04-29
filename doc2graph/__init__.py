@@ -13,6 +13,7 @@ from .loaders.docx import load_docx
 from .loaders.pptx import load_pptx
 from .loaders.html import load_html, parse_html_string
 from .loaders.csv import load_csv
+from .loaders.code import load_code, detect_language
 
 __version__ = "0.3.0"
 __all__ = [
@@ -29,4 +30,6 @@ __all__ = [
     "load_html",
     "parse_html_string",
     "load_csv",
+    "load_code",
+    "detect_language",
 ]
