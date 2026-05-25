@@ -76,6 +76,7 @@ document graph:
 doc2graph ./knowledge-base --graph all --output corpus.graph.json
 doc2graph ./knowledge-base --graph decision --include "adr/**" --output adr.graph.json
 doc2graph ./exports --graph all --max-files 500 --max-file-bytes 10485760
+doc2graph ./exports --graph all --max-total-bytes 1073741824 --output corpus.graph.json
 doc2graph ./exports --graph all --skip-report-limit 25 --output corpus.graph.json
 doc2graph ./exports --graph all --cache .doc2graph-cache.json --output corpus.graph.json
 ```
@@ -85,6 +86,9 @@ Large corpora are handled by deterministic limits:
 - `--max-files N`: stop after N supported files.
 - `--max-file-bytes N`: skip very large individual files and add a `skipped_file` node.
 - `--max-file-bytes -1`: disable the per-file size guard.
+- `--max-total-bytes N`: stop extracting files after the cumulative extracted
+  byte budget is reached and report remaining files as skipped.
+- `--max-total-bytes -1`: disable the cumulative byte guard.
 - `--no-recursive`: only process files directly under the directory.
 - `--include` / `--exclude`: repeatable glob filters for folder subsets.
 - `--skip-report-limit N`: cap the number of omitted files listed as
@@ -95,10 +99,11 @@ Large corpora are handled by deterministic limits:
 
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, skipped-file counts, cache hit/miss/write counts when caching is
-enabled, and skip reasons such as unsupported extensions, max-file limits,
-oversized files, symlinked directories, inaccessible paths, and per-file
-extraction errors. This keeps large mixed-folder runs deterministic and
-auditable without requiring all omitted paths to be materialized as graph nodes.
+enabled, extracted-file byte counts, and skip reasons such as unsupported
+extensions, max-file limits, cumulative byte limits, oversized files,
+symlinked directories, inaccessible paths, and per-file extraction errors. This
+keeps large mixed-folder runs deterministic and auditable without requiring all
+omitted paths to be materialized as graph nodes.
 
 Outputs are plain JSON:
 

@@ -61,6 +61,7 @@ def build_corpus_graph(
     recursive: bool = True,
     max_files: int | None = None,
     max_file_bytes: int | None = 25 * 1024 * 1024,
+    max_total_bytes: int | None = None,
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
     skip_report_limit: int = 100,
@@ -110,6 +111,11 @@ def build_corpus_graph(
         "skip_report_limit": skip_report_limit,
         "max_files": max_files,
         "max_files_reached": scan.skipped_by_reason.get("max_files_exceeded", 0) > 0,
+        "max_file_bytes": max_file_bytes,
+        "max_total_bytes": max_total_bytes,
+        "max_total_bytes_reached": False,
+        "extracted_file_count": 0,
+        "extracted_total_bytes": 0,
         "recursive": recursive,
         "extraction_method": "static",
         "cache_enabled": cache_stats["enabled"],
@@ -159,6 +165,8 @@ def build_corpus_graph(
 
     runtime_skipped_by_reason: Dict[str, int] = {}
     runtime_skipped_samples = 0
+    extracted_file_count = 0
+    extracted_total_bytes = 0
 
     for file_path in files:
         rel = file_path.relative_to(root).as_posix()
@@ -189,6 +197,33 @@ def build_corpus_graph(
                         "relative_path": rel,
                         "reason": "file_too_large",
                         "max_file_bytes": max_file_bytes,
+                        "size_bytes": size,
+                        "extraction_method": "static",
+                    },
+                )
+            )
+            edges.append(make_edge(file_id, skipped_id, "skipped"))
+            runtime_skipped_samples += 1
+            continue
+
+        if (
+            max_total_bytes is not None
+            and size is not None
+            and extracted_total_bytes + size > max_total_bytes
+        ):
+            skipped_id = _id("skipped_file", f"max_total_bytes_exceeded:{rel}")
+            _count_skip(runtime_skipped_by_reason, "max_total_bytes_exceeded")
+            nodes.append(
+                make_node(
+                    skipped_id,
+                    f"Skipped {file_path.name}",
+                    attributes={
+                        "type": "skipped_file",
+                        "source": str(file_path),
+                        "relative_path": rel,
+                        "reason": "max_total_bytes_exceeded",
+                        "max_total_bytes": max_total_bytes,
+                        "current_total_bytes": extracted_total_bytes,
                         "size_bytes": size,
                         "extraction_method": "static",
                     },
@@ -247,6 +282,9 @@ def build_corpus_graph(
         if graph_root:
             edges.append(make_edge(file_id, graph_root, "extracted_as"))
         graph_parts.append(graph)
+        extracted_file_count += 1
+        if size is not None:
+            extracted_total_bytes += size
 
     corpus_graph = {"nodes": nodes, "edges": edges, "current_node_id": root_id}
     for reason, count in runtime_skipped_by_reason.items():
@@ -255,10 +293,17 @@ def build_corpus_graph(
     manifest_attrs["skipped_file_count"] = scan.skipped_count
     manifest_attrs["skipped_by_reason"] = dict(sorted(scan.skipped_by_reason.items()))
     manifest_attrs["reported_skipped_file_count"] = len(scan.skipped_samples) + runtime_skipped_samples
+    manifest_attrs["max_total_bytes_reached"] = (
+        scan.skipped_by_reason.get("max_total_bytes_exceeded", 0) > 0
+    )
+    manifest_attrs["extracted_file_count"] = extracted_file_count
+    manifest_attrs["extracted_total_bytes"] = extracted_total_bytes
     manifest_attrs["cache_hits"] = cache_stats["hits"]
     manifest_attrs["cache_misses"] = cache_stats["misses"]
     manifest_attrs["cache_writes"] = cache_stats["writes"]
     nodes[0]["attributes"]["skipped_file_count"] = scan.skipped_count
+    nodes[0]["attributes"]["extracted_file_count"] = extracted_file_count
+    nodes[0]["attributes"]["extracted_total_bytes"] = extracted_total_bytes
     if cache_path is not None:
         _write_cache(cache_path, cache)
     return _merge_graphs([corpus_graph, *graph_parts])

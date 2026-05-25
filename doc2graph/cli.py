@@ -61,6 +61,11 @@ def main(argv: List[str] | None = None) -> int:
         help="Skip individual directory files larger than this many bytes; set -1 to disable",
     )
     parser.add_argument(
+        "--max-total-bytes",
+        type=int,
+        help="Stop extracting directory files after this many cumulative bytes; set -1 to disable",
+    )
+    parser.add_argument(
         "--include",
         action="append",
         help="Directory include glob, relative to corpus root; may be repeated",
@@ -88,12 +93,18 @@ def main(argv: List[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     max_file_bytes = None if args.max_file_bytes < 0 else args.max_file_bytes
+    max_total_bytes = (
+        None
+        if args.max_total_bytes is None or args.max_total_bytes < 0
+        else args.max_total_bytes
+    )
     graph = build_corpus_graph(
         args.path,
         args.graph,
         recursive=not args.no_recursive,
         max_files=args.max_files,
         max_file_bytes=max_file_bytes,
+        max_total_bytes=max_total_bytes,
         include=args.include,
         exclude=args.exclude,
         skip_report_limit=args.skip_report_limit,

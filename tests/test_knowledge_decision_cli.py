@@ -225,6 +225,35 @@ def test_directory_corpus_skip_report_limit_bounds_nodes(tmp_path):
     assert len(reported_skips) == 1
 
 
+def test_directory_corpus_limits_total_extracted_bytes(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    first_size = (docs / "a.md").stat().st_size
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_total_bytes=first_size,
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "max_total_bytes_exceeded"
+    ]
+
+    assert manifest["attributes"]["extracted_file_count"] == 1
+    assert manifest["attributes"]["extracted_total_bytes"] == first_size
+    assert manifest["attributes"]["max_total_bytes"] == first_size
+    assert manifest["attributes"]["max_total_bytes_reached"] is True
+    assert manifest["attributes"]["skipped_by_reason"] == {"max_total_bytes_exceeded": 1}
+    assert skipped[0]["attributes"]["relative_path"] == "b.md"
+
+
 def test_directory_scan_prunes_default_ignored_directories(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
