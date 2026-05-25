@@ -104,6 +104,9 @@ Large corpora are handled by deterministic limits:
   extraction across repeated corpus runs. If the cache file is inside the
   scanned corpus directory, doc2graph reserves it as an output artifact and
   does not extract it as a source document.
+- `--output PATH`: when the output file already exists inside the scanned
+  corpus directory, doc2graph reserves it too, even if it has a supported
+  document extension such as `.md` or `.txt`.
 - `--refresh-cache`: rebuild cached entries while writing an updated cache.
 
 Knowledge extraction also resolves numeric inline citations such as `[1]` to

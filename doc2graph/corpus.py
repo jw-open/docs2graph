@@ -68,6 +68,7 @@ def build_corpus_graph(
     exclude: Sequence[str] | None = None,
     skip_report_limit: int = 100,
     cache_path: str | Path | None = None,
+    output_path: str | Path | None = None,
     refresh_cache: bool = False,
 ) -> Dict[str, Any]:
     """Build one graph from a file, URL, or directory corpus."""
@@ -83,7 +84,11 @@ def build_corpus_graph(
     if not root.is_dir():
         raise FileNotFoundError(path)
 
-    reserved_paths = [_resolved_path(cache_path)] if cache_path is not None else None
+    reserved_paths = [
+        _resolved_path(reserved)
+        for reserved in (cache_path, output_path)
+        if reserved is not None
+    ]
     scan = scan_document_files(
         root,
         recursive=recursive,

@@ -617,3 +617,33 @@ def test_directory_corpus_does_not_extract_cache_file_inside_corpus(tmp_path):
     assert file_paths == ["a.md"]
     assert skipped[0]["attributes"]["relative_path"] == ".doc2graph-cache.json"
     assert cached_paths == {"a.md"}
+
+
+def test_cli_does_not_extract_existing_output_file_inside_corpus(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    output = docs / "corpus.md"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    output.write_text("# Previous output\n\nOld generated graph artifact.", encoding="utf-8")
+
+    exit_code = main([str(docs), "--graph", "knowledge", "--output", str(output)])
+
+    graph = json.loads(output.read_text(encoding="utf-8"))
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "reserved_output_file"
+    ]
+
+    assert exit_code == 0
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["skipped_by_reason"] == {"reserved_output_file": 1}
+    assert file_paths == ["a.md"]
+    assert skipped[0]["attributes"]["relative_path"] == "corpus.md"

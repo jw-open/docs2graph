@@ -115,6 +115,7 @@ def main(argv: List[str] | None = None) -> int:
         exclude=args.exclude,
         skip_report_limit=args.skip_report_limit,
         cache_path=args.cache,
+        output_path=args.output,
         refresh_cache=args.refresh_cache,
     )
     payload = json.dumps(graph, indent=2 if args.pretty else None, sort_keys=args.pretty)
