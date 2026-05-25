@@ -19,6 +19,7 @@ _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 _URL_RE = re.compile(r"https?://[^\s)>\]]+")
 _BRACKET_CITATION_RE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
 _AUTHOR_YEAR_RE = re.compile(r"\(([A-Z][A-Za-z\-]+(?:\s+et\s+al\.)?,\s*(?:19|20)\d{2})\)")
+_REFERENCE_ENTRY_RE = re.compile(r"^\s*\[(\d+)\]\s+(.+)$")
 _PHRASE_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9\-]*(?:\s+[A-Za-z][A-Za-z0-9\-]*){1,4}\b")
 
 _STOP_PHRASES = {
@@ -86,6 +87,20 @@ def extract_knowledge_graph(
     })
 
     sections = _split_sections(text)
+    reference_ids: Dict[str, str] = {}
+    for reference in _extract_reference_entries(sections):
+        reference_id = _node_id("reference", f"{reference['key']}-{reference['content']}")
+        reference_ids.setdefault(reference["key"], reference_id)
+        _add_node(nodes, seen_nodes, reference_id, reference["label"], reference["content"], {
+            "type": "reference",
+            "key": reference["key"],
+            "source": source,
+            "section": reference["section"],
+            "section_index": reference["section_index"],
+            "extraction_method": "static",
+        })
+        _add_edge(edges, seen_edges, doc_id, reference_id, "contains")
+
     for index, section in enumerate(sections):
         section_id = _node_id("section", f"{index}-{section['title']}")
         attrs = {
@@ -107,14 +122,16 @@ def extract_knowledge_graph(
             })
             _add_edge(edges, seen_edges, section_id, url_id, "links_to")
 
-        for citation in _extract_citations(section["content"]):
-            citation_id = _node_id("citation", citation)
-            _add_node(nodes, seen_nodes, citation_id, citation, attributes={
-                "type": "citation",
-                "source": source,
-                "extraction_method": "static",
-            })
-            _add_edge(edges, seen_edges, section_id, citation_id, "cites")
+        _add_citation_edges(
+            nodes,
+            edges,
+            seen_nodes,
+            seen_edges,
+            section_id,
+            section["content"],
+            source,
+            reference_ids,
+        )
 
     concept_counts = _extract_concepts(text)
     for concept, count in concept_counts[:max_concepts]:
@@ -142,9 +159,20 @@ def extract_knowledge_graph(
                     "type": "claim",
                     "source": source,
                     "section": section["title"],
+                    "section_index": index,
                     "extraction_method": "static",
                 })
                 _add_edge(edges, seen_edges, section_id, claim_id, "contains")
+                _add_citation_edges(
+                    nodes,
+                    edges,
+                    seen_nodes,
+                    seen_edges,
+                    claim_id,
+                    sentence,
+                    source,
+                    reference_ids,
+                )
                 claim_count += 1
             if any(cue in lower for cue in _EVIDENCE_CUES):
                 evidence_id = _node_id("evidence", sentence)
@@ -153,9 +181,20 @@ def extract_knowledge_graph(
                     "type": "evidence",
                     "source": source,
                     "section": section["title"],
+                    "section_index": index,
                     "extraction_method": "static",
                 })
                 _add_edge(edges, seen_edges, section_id, evidence_id, "contains")
+                _add_citation_edges(
+                    nodes,
+                    edges,
+                    seen_nodes,
+                    seen_edges,
+                    evidence_id,
+                    sentence,
+                    source,
+                    reference_ids,
+                )
 
     claim_ids = [n["id"] for n in nodes if n.get("attributes", {}).get("type") == "claim"]
     for evidence_id, _, _ in evidence_nodes:
@@ -212,6 +251,60 @@ def _extract_citations(text: str) -> Iterable[str]:
         citations.extend(part.strip() for part in match.group(1).split(","))
     citations.extend(match.group(1) for match in _AUTHOR_YEAR_RE.finditer(text))
     return citations
+
+
+def _extract_reference_entries(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    references: List[Dict[str, Any]] = []
+    for index, section in enumerate(sections):
+        if section["title"].strip().lower() not in {"references", "bibliography", "works cited"}:
+            continue
+        current: Dict[str, Any] | None = None
+        for raw_line in section["content"].splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            match = _REFERENCE_ENTRY_RE.match(line)
+            if match:
+                if current is not None:
+                    references.append(current)
+                key = match.group(1).strip()
+                content = match.group(2).strip()
+                current = {
+                    "key": key,
+                    "label": f"[{key}] {_label(content, limit=80)}",
+                    "content": content,
+                    "section": section["title"],
+                    "section_index": index,
+                }
+            elif current is not None:
+                current["content"] = f"{current['content']} {line}".strip()
+                current["label"] = f"[{current['key']}] {_label(current['content'], limit=80)}"
+        if current is not None:
+            references.append(current)
+    return references
+
+
+def _add_citation_edges(
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    seen_nodes: set,
+    seen_edges: set,
+    owner_id: str,
+    text: str,
+    source: str,
+    reference_ids: Dict[str, str],
+) -> None:
+    for citation in _extract_citations(text):
+        citation_id = _node_id("citation", citation)
+        _add_node(nodes, seen_nodes, citation_id, citation, attributes={
+            "type": "citation",
+            "source": source,
+            "extraction_method": "static",
+        })
+        _add_edge(edges, seen_edges, owner_id, citation_id, "cites")
+        reference_id = reference_ids.get(citation)
+        if reference_id:
+            _add_edge(edges, seen_edges, citation_id, reference_id, "resolves_to")
 
 
 def _sentences(text: str) -> Iterable[str]:

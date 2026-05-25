@@ -49,7 +49,7 @@ doc2graph docs.md --graph all --output docs.graph.json
 doc2graph ./docs --graph all --output docs-corpus.graph.json
 ```
 
-- `knowledge`: document, section, concept, claim, evidence, citation, and URL nodes.
+- `knowledge`: document, section, concept, claim, evidence, citation, reference, and URL nodes.
 - `decision`: problem, context, option, pros, cons, tradeoff, decision, consequence, and confidence nodes.
 - `schema`: table/entity graphs from schema docs and data dictionaries.
 - `media`: image/chart metadata, OCR text, and chart signal nodes.
@@ -105,6 +105,13 @@ Large corpora are handled by deterministic limits:
   scanned corpus directory, doc2graph reserves it as an output artifact and
   does not extract it as a source document.
 - `--refresh-cache`: rebuild cached entries while writing an updated cache.
+
+Knowledge extraction also resolves numeric inline citations such as `[1]` to
+matching entries in `# References`, `# Bibliography`, or `# Works Cited`
+sections when those entries are present. Claim and evidence nodes keep their
+own `cites` edges, and citation nodes connect to parsed reference entries with
+`resolves_to`, preserving deterministic provenance for PageRank and context
+selection.
 
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, skipped-file counts, cache hit/miss/write counts when caching is

@@ -23,6 +23,18 @@ Evaluation results show improved recall on multi hop questions.
 """
 
 
+REFERENCED_PAPER = """# Abstract
+
+This paper proposes graph grounded context for long documents [1, 2].
+Results show recall improves by 18% when citations are preserved [2].
+
+# References
+
+[1] Smith, A. Graph Context for Retrieval. 2024.
+[2] Lee, B. Evidence-Aware PageRank. 2025.
+"""
+
+
 DECISION = """# Problem
 
 The system needs to create graphs from documentation without requiring cloud calls.
@@ -73,6 +85,39 @@ def test_extract_knowledge_graph_for_paper_signals():
     assert "url" in node_types
     assert "supported_by" in labels
     assert graph["current_node_id"].startswith("document:")
+
+
+def test_extract_knowledge_graph_resolves_inline_citations_to_references():
+    graph = extract_knowledge_graph(REFERENCED_PAPER, source="paper.md")
+    node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
+    labels = {e["label"] for e in graph["edges"]}
+    references = [
+        n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "reference"
+    ]
+    citation_to_reference = [
+        e for e in graph["edges"] if e["label"] == "resolves_to"
+    ]
+    claim_cites = [
+        e
+        for e in graph["edges"]
+        if e["label"] == "cites"
+        and e["from"].startswith("claim:")
+        and e["to"].startswith("citation:")
+    ]
+    evidence_cites = [
+        e
+        for e in graph["edges"]
+        if e["label"] == "cites"
+        and e["from"].startswith("evidence:")
+        and e["to"].startswith("citation:")
+    ]
+
+    assert "reference" in node_types
+    assert "resolves_to" in labels
+    assert {n["attributes"]["key"] for n in references} == {"1", "2"}
+    assert len(citation_to_reference) == 2
+    assert len(claim_cites) == 2
+    assert len(evidence_cites) == 1
 
 
 def test_extract_decision_graph_roles_and_edges():
