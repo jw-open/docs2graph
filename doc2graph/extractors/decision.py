@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from typing import Any, Dict, List, Optional
 
 from ..types import GraphDict, make_edge, make_node
@@ -52,11 +53,12 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
 
     for index, section in enumerate(sections):
         kind = _classify(section["title"], section["content"])
-        section_id = _node_id(kind, f"{index}-{section['title']}")
+        section_id = _source_node_id(kind, f"{index}-{section['title']}", source)
         _add_node(nodes, seen_nodes, section_id, section["title"], section["content"], {
             "type": kind,
             "level": section["level"],
             "source": source,
+            "document_id": root_id,
             "extraction_method": "static",
         })
         _add_edge(edges, seen_edges, root_id, section_id, "contains")
@@ -84,10 +86,11 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
 
         for bullet_index, bullet in enumerate(_BULLET_RE.findall(section["content"])):
             bullet_kind = _classify_bullet(bullet, default=kind)
-            bullet_id = _node_id(bullet_kind, f"{index}-{bullet_index}-{bullet}")
+            bullet_id = _source_node_id(bullet_kind, f"{index}-{bullet_index}-{bullet}", source)
             _add_node(nodes, seen_nodes, bullet_id, _label(bullet), bullet, {
                 "type": bullet_kind,
                 "source": source,
+                "document_id": root_id,
                 "section": section["title"],
                 "extraction_method": "static",
             })
@@ -202,8 +205,14 @@ def _label(text: str, limit: int = 96) -> str:
 
 
 def _node_id(prefix: str, value: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "_", value.lower()).strip("_")[:80]
-    return f"{prefix}:{slug or 'item'}"
+    digest = hashlib.sha1(value.encode("utf-8", errors="ignore")).hexdigest()[:10]
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", value.lower()).strip("_")[:70]
+    return f"{prefix}:{slug or 'item'}:{digest}"
+
+
+def _source_node_id(prefix: str, value: str, source: str) -> str:
+    scoped_value = f"{source}\0{value}" if source else value
+    return _node_id(prefix, scoped_value)
 
 
 def _add_node(

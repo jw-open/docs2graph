@@ -139,6 +139,13 @@ reserved cache/output files, and per-file extraction errors. This
 keeps large mixed-folder runs deterministic and auditable without requiring all
 omitted paths to be materialized as graph nodes.
 
+Document-local node IDs are scoped by source during file and corpus extraction,
+so common headings such as `# Abstract`, `# Summary`, or `# Decision` remain
+separate per file while preserving their original labels and source
+provenance. This prevents corpus merges from silently dropping same-named
+sections, claims, decision nodes, citations, references, URLs, or schema
+tables from later files.
+
 Outputs are plain JSON:
 
 ```json

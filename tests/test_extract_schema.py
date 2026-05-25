@@ -86,6 +86,15 @@ def test_pipe_table_node_attributes():
     assert nodes["customers"]["attributes"]["type"] == "table"
 
 
+def test_table_ids_are_source_scoped_when_source_is_present():
+    left = extract_schema_graph("## customers\n- id: INT\n", source="left.md")
+    right = extract_schema_graph("## customers\n- id: INT\n", source="right.md")
+
+    assert left["nodes"][0]["label"] == "customers"
+    assert right["nodes"][0]["label"] == "customers"
+    assert left["nodes"][0]["id"] != right["nodes"][0]["id"]
+
+
 # ---------------------------------------------------------------------------
 # Format 2: heading + bullet descriptions
 # ---------------------------------------------------------------------------

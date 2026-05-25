@@ -29,6 +29,7 @@ so the two packages can be chained::
     context = g.rank("total revenue per customer")
 """
 
+import hashlib
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -113,7 +114,7 @@ def _extract_from_markdown_tables(text: str, source: str) -> GraphDict:
             attrs["source"] = source
 
         nodes.append(make_node(
-            id=table_name.lower().replace(" ", "_"),
+            id=_table_id(table_name, source),
             label=table_name,
             content=", ".join(col_defs),
             attributes=attrs,
@@ -213,6 +214,16 @@ def _find_col(header: List[str], candidates: tuple) -> Optional[int]:
     return None
 
 
+def _table_id(table_name: str, source: str) -> str:
+    slug = table_name.lower().replace(" ", "_")
+    if not source:
+        return slug
+    scoped_value = f"{source}\0{table_name}"
+    digest = hashlib.sha1(scoped_value.encode("utf-8", errors="ignore")).hexdigest()[:10]
+    scoped_slug = re.sub(r"[^a-zA-Z0-9]+", "_", scoped_value.lower()).strip("_")[:70]
+    return f"{scoped_slug or slug}:{digest}"
+
+
 # ---------------------------------------------------------------------------
 # Format 2: Heading + bullet/paragraph descriptions
 # ---------------------------------------------------------------------------
@@ -278,7 +289,7 @@ def _extract_from_sections(text: str, source: str) -> GraphDict:
             attrs["source"] = source
 
         nodes.append(make_node(
-            id=table_name.lower().replace(" ", "_"),
+            id=_table_id(table_name, source),
             label=table_name,
             content=", ".join(col_defs),
             attributes=attrs,

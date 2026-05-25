@@ -9,6 +9,7 @@ repeatable and offline.
 from __future__ import annotations
 
 import re
+import hashlib
 from collections import Counter
 from typing import Any, Dict, Iterable, List, Tuple
 
@@ -89,12 +90,13 @@ def extract_knowledge_graph(
     sections = _split_sections(text)
     reference_ids: Dict[str, str] = {}
     for reference in _extract_reference_entries(sections):
-        reference_id = _node_id("reference", f"{reference['key']}-{reference['content']}")
+        reference_id = _source_node_id("reference", f"{reference['key']}-{reference['content']}", source)
         reference_ids.setdefault(reference["key"], reference_id)
         _add_node(nodes, seen_nodes, reference_id, reference["label"], reference["content"], {
             "type": "reference",
             "key": reference["key"],
             "source": source,
+            "document_id": doc_id,
             "section": reference["section"],
             "section_index": reference["section_index"],
             "extraction_method": "static",
@@ -102,22 +104,24 @@ def extract_knowledge_graph(
         _add_edge(edges, seen_edges, doc_id, reference_id, "contains")
 
     for index, section in enumerate(sections):
-        section_id = _node_id("section", f"{index}-{section['title']}")
+        section_id = _source_node_id("section", f"{index}-{section['title']}", source)
         attrs = {
             "type": "section",
             "level": section["level"],
             "index": index,
             "source": source,
+            "document_id": doc_id,
             "extraction_method": "static",
         }
         _add_node(nodes, seen_nodes, section_id, section["title"], section["content"], attrs)
         _add_edge(edges, seen_edges, doc_id, section_id, "contains")
 
         for url in _extract_urls(section["content"]):
-            url_id = _node_id("url", url)
+            url_id = _source_node_id("url", url, source)
             _add_node(nodes, seen_nodes, url_id, url, attributes={
                 "type": "url",
                 "source": source,
+                "document_id": doc_id,
                 "extraction_method": "static",
             })
             _add_edge(edges, seen_edges, section_id, url_id, "links_to")
@@ -130,6 +134,7 @@ def extract_knowledge_graph(
             section_id,
             section["content"],
             source,
+            doc_id,
             reference_ids,
         )
 
@@ -144,20 +149,21 @@ def extract_knowledge_graph(
         })
         for index, section in enumerate(sections):
             if concept.lower() in section["content"].lower():
-                section_id = _node_id("section", f"{index}-{section['title']}")
+                section_id = _source_node_id("section", f"{index}-{section['title']}", source)
                 _add_edge(edges, seen_edges, section_id, concept_id, "mentions")
 
     claim_count = 0
     evidence_nodes: List[Tuple[str, str, str]] = []
     for index, section in enumerate(sections):
-        section_id = _node_id("section", f"{index}-{section['title']}")
+        section_id = _source_node_id("section", f"{index}-{section['title']}", source)
         for sentence in _sentences(section["content"]):
             lower = sentence.lower()
             if claim_count < max_claims and any(cue in lower for cue in _CLAIM_CUES):
-                claim_id = _node_id("claim", sentence)
+                claim_id = _source_node_id("claim", sentence, source)
                 _add_node(nodes, seen_nodes, claim_id, _label(sentence), sentence, {
                     "type": "claim",
                     "source": source,
+                    "document_id": doc_id,
                     "section": section["title"],
                     "section_index": index,
                     "extraction_method": "static",
@@ -171,15 +177,17 @@ def extract_knowledge_graph(
                     claim_id,
                     sentence,
                     source,
+                    doc_id,
                     reference_ids,
                 )
                 claim_count += 1
             if any(cue in lower for cue in _EVIDENCE_CUES):
-                evidence_id = _node_id("evidence", sentence)
+                evidence_id = _source_node_id("evidence", sentence, source)
                 evidence_nodes.append((evidence_id, section_id, sentence))
                 _add_node(nodes, seen_nodes, evidence_id, _label(sentence), sentence, {
                     "type": "evidence",
                     "source": source,
+                    "document_id": doc_id,
                     "section": section["title"],
                     "section_index": index,
                     "extraction_method": "static",
@@ -193,6 +201,7 @@ def extract_knowledge_graph(
                     evidence_id,
                     sentence,
                     source,
+                    doc_id,
                     reference_ids,
                 )
 
@@ -292,13 +301,15 @@ def _add_citation_edges(
     owner_id: str,
     text: str,
     source: str,
+    document_id: str,
     reference_ids: Dict[str, str],
 ) -> None:
     for citation in _extract_citations(text):
-        citation_id = _node_id("citation", citation)
+        citation_id = _source_node_id("citation", citation, source)
         _add_node(nodes, seen_nodes, citation_id, citation, attributes={
             "type": "citation",
             "source": source,
+            "document_id": document_id,
             "extraction_method": "static",
         })
         _add_edge(edges, seen_edges, owner_id, citation_id, "cites")
@@ -319,8 +330,14 @@ def _label(text: str, limit: int = 96) -> str:
 
 
 def _node_id(prefix: str, value: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "_", value.lower()).strip("_")[:80]
-    return f"{prefix}:{slug or 'item'}"
+    digest = hashlib.sha1(value.encode("utf-8", errors="ignore")).hexdigest()[:10]
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", value.lower()).strip("_")[:70]
+    return f"{prefix}:{slug or 'item'}:{digest}"
+
+
+def _source_node_id(prefix: str, value: str, source: str) -> str:
+    scoped_value = f"{source}\0{value}" if source else value
+    return _node_id(prefix, scoped_value)
 
 
 def _add_node(

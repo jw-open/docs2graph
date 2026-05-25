@@ -198,6 +198,46 @@ def test_build_graph_from_directory_corpus(tmp_path):
     assert "extracted_as" in labels
 
 
+def test_directory_corpus_preserves_same_heading_sections_per_source(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# Summary\n\nThis document describes Alpha context.", encoding="utf-8")
+    (docs / "b.md").write_text("# Summary\n\nThis document describes Beta context.", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge")
+    summary_sections = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "section"
+        and n.get("label") == "Summary"
+    ]
+    sources = {n["attributes"]["source"] for n in summary_sections}
+
+    assert len(summary_sections) == 2
+    assert sources == {str(docs / "a.md"), str(docs / "b.md")}
+    assert all(n["attributes"]["document_id"].startswith("document:") for n in summary_sections)
+
+
+def test_directory_corpus_preserves_same_decision_sections_per_source(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# Decision\n\nChoose static extraction.", encoding="utf-8")
+    (docs / "b.md").write_text("# Decision\n\nChoose explicit cache paths.", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="decision")
+    decision_sections = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "decision"
+        and n.get("label") == "Decision"
+    ]
+    sources = {n["attributes"]["source"] for n in decision_sections}
+
+    assert len(decision_sections) == 2
+    assert sources == {str(docs / "a.md"), str(docs / "b.md")}
+    assert all(n["attributes"]["document_id"].startswith("decision_document:") for n in decision_sections)
+
+
 def test_directory_corpus_skips_large_files(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
