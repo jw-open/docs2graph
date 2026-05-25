@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -35,6 +36,57 @@ SUPPORTED_SUFFIXES = {
     ".gif",
     ".webp",
 } | CODE_SUFFIXES
+
+_CORPUS_LINK_SOURCE_TYPES = {
+    "document",
+    "decision_document",
+    "media_document",
+    "section",
+    "problem",
+    "context",
+    "option",
+    "pros",
+    "cons",
+    "tradeoff",
+    "decision",
+    "consequence",
+    "confidence",
+    "claim",
+    "evidence",
+    "ocr_text",
+}
+
+_CORPUS_LINK_TARGET_TYPES = {
+    "document",
+    "decision_document",
+    "media_document",
+    "section",
+    "problem",
+    "context",
+    "option",
+    "tradeoff",
+    "decision",
+    "consequence",
+    "confidence",
+    "table",
+}
+
+_GENERIC_CROSS_DOC_ALIASES = {
+    "abstract",
+    "background",
+    "conclusion",
+    "context",
+    "decision",
+    "document",
+    "introduction",
+    "method",
+    "methodology",
+    "overview",
+    "problem",
+    "references",
+    "results",
+    "summary",
+}
 
 DEFAULT_IGNORE_PATTERNS = (
     ".git",
@@ -188,6 +240,7 @@ def build_corpus_graph(
         "cache_pruned": cache_stats["pruned"],
         "cache_file_updated": False,
         "cache_refresh": cache_stats["refresh"],
+        "cross_document_link_count": 0,
     }
     nodes: List[Dict[str, Any]] = [
         make_node(
@@ -391,7 +444,11 @@ def build_corpus_graph(
         cache_stats["pruned"] = _prune_cache(cache, root, graph_type, active_cache_keys)
         manifest_attrs["cache_pruned"] = cache_stats["pruned"]
         manifest_attrs["cache_file_updated"] = _write_cache(cache_path, cache)
-    return _merge_graphs([corpus_graph, *graph_parts])
+    merged = _merge_graphs([corpus_graph, *graph_parts])
+    cross_document_link_count = _add_corpus_cross_document_links(merged)
+    manifest_attrs["cross_document_link_count"] = cross_document_link_count
+    nodes[0]["attributes"]["cross_document_link_count"] = cross_document_link_count
+    return merged
 
 
 @dataclass(frozen=True)
@@ -701,6 +758,120 @@ def _ensure_folder_nodes(
             seen.add(folder_id)
         parent_id = folder_id
     return parent_id
+
+
+def _add_corpus_cross_document_links(graph: Dict[str, Any]) -> int:
+    """
+    Add deterministic mention edges between nodes from different corpus files.
+
+    Per-file extractors intentionally work in isolation. This pass reconnects
+    the merged corpus graph when one document explicitly names another
+    document's title, section, decision, table, or path-derived stem.
+    """
+    nodes = graph.get("nodes", [])
+    edges = graph.setdefault("edges", [])
+    existing_edges = {
+        (edge.get("from"), edge.get("to"), edge.get("label"))
+        for edge in edges
+    }
+    targets = _cross_document_targets(nodes)
+    added = 0
+
+    for source_node in nodes:
+        source_attrs = source_node.get("attributes") or {}
+        source_type = source_attrs.get("type")
+        source_path = source_attrs.get("source")
+        if source_type not in _CORPUS_LINK_SOURCE_TYPES or not source_path:
+            continue
+        content = source_node.get("content") or ""
+        if not content:
+            continue
+        source_id = source_node.get("id")
+        if not source_id:
+            continue
+
+        for target in targets:
+            if target["source"] == source_path or target["id"] == source_id:
+                continue
+            if not _content_matches_any_pattern(content, target["patterns"]):
+                continue
+            edge_key = (source_id, target["id"], "mentions")
+            if edge_key in existing_edges:
+                continue
+            edges.append(make_edge(source_id, target["id"], "mentions"))
+            existing_edges.add(edge_key)
+            added += 1
+
+    return added
+
+
+def _cross_document_targets(nodes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    targets: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for node in nodes:
+        attrs = node.get("attributes") or {}
+        node_id = node.get("id")
+        source = attrs.get("source")
+        if not node_id or not source or attrs.get("type") not in _CORPUS_LINK_TARGET_TYPES:
+            continue
+        aliases = _cross_document_aliases(node)
+        if not aliases:
+            continue
+        key = f"{source}\0{node_id}"
+        if key in seen:
+            continue
+        targets.append({
+            "id": node_id,
+            "source": source,
+            "patterns": [_alias_pattern(alias) for alias in aliases],
+        })
+        seen.add(key)
+    return targets
+
+
+def _cross_document_aliases(node: Dict[str, Any]) -> List[str]:
+    attrs = node.get("attributes") or {}
+    aliases: List[str] = []
+    _append_alias(aliases, node.get("label", ""))
+
+    source = attrs.get("source")
+    if source and attrs.get("type") in {"document", "decision_document", "media_document"}:
+        path = Path(str(source))
+        _append_alias(aliases, path.name)
+        _append_alias(aliases, path.stem)
+        _append_alias(aliases, path.stem.replace("-", " ").replace("_", " "))
+
+    return aliases
+
+
+def _append_alias(aliases: List[str], value: str) -> None:
+    alias = _normalize_alias(value)
+    if alias and alias not in aliases:
+        aliases.append(alias)
+
+
+def _normalize_alias(value: str) -> str:
+    value = Path(value).stem if "/" in value or "\\" in value else value
+    value = re.sub(r"\s+", " ", value.replace("_", " ").replace("-", " ")).strip(" .,:;()[]")
+    lower = value.lower()
+    if not lower or lower in _GENERIC_CROSS_DOC_ALIASES:
+        return ""
+    if len(lower) < 4:
+        return ""
+    if len(lower.split()) == 1 and not any(char.isdigit() for char in lower) and len(lower) < 8:
+        return ""
+    return value
+
+
+def _alias_pattern(alias: str) -> re.Pattern[str]:
+    return re.compile(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", re.IGNORECASE)
+
+
+def _content_matches_any_pattern(content: str, patterns: Sequence[re.Pattern[str]]) -> bool:
+    for pattern in patterns:
+        if pattern.search(content):
+            return True
+    return False
 
 
 def _ignore_reason(

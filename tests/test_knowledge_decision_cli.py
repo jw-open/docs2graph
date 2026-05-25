@@ -239,6 +239,64 @@ def test_directory_corpus_preserves_same_decision_sections_per_source(tmp_path):
     assert all(n["attributes"]["document_id"].startswith("decision_document:") for n in decision_sections)
 
 
+def test_directory_corpus_adds_cross_document_links_for_named_sections(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    alpha = docs / "alpha.md"
+    beta = docs / "beta.md"
+    alpha.write_text(
+        "# Alpha Plan\n\nThis document should follow the Beta Strategy before launch.",
+        encoding="utf-8",
+    )
+    beta.write_text("# Beta Strategy\n\nThis document describes release sequencing.", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge")
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    beta_section = next(
+        n
+        for n in graph["nodes"]
+        if n.get("label") == "Beta Strategy"
+        and n.get("attributes", {}).get("source") == str(beta)
+    )
+    cross_links = [
+        e
+        for e in graph["edges"]
+        if e["label"] == "mentions"
+        and e["to"] == beta_section["id"]
+        and any(
+            n["id"] == e["from"] and n.get("attributes", {}).get("source") == str(alpha)
+            for n in graph["nodes"]
+        )
+    ]
+
+    assert manifest["attributes"]["cross_document_link_count"] >= 1
+    assert cross_links
+
+
+def test_directory_corpus_avoids_generic_heading_cross_document_links(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# Summary\n\nThis summary mentions Summary generically.", encoding="utf-8")
+    (docs / "b.md").write_text("# Summary\n\nAnother generic summary.", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge")
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    summary_ids = {
+        n["id"]
+        for n in graph["nodes"]
+        if n.get("label") == "Summary"
+        and n.get("attributes", {}).get("type") == "section"
+    }
+    generic_cross_links = [
+        e
+        for e in graph["edges"]
+        if e["label"] == "mentions" and e["from"] in summary_ids and e["to"] in summary_ids
+    ]
+
+    assert manifest["attributes"]["cross_document_link_count"] == 0
+    assert generic_cross_links == []
+
+
 def test_directory_corpus_skips_large_files(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()

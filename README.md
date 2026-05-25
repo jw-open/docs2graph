@@ -73,7 +73,9 @@ skips common generated folders such as `.git`, `node_modules`, `dist`, and
 `build`, along with doc2graph run/cache artifacts and Python package metadata
 such as `.doc2graph-runs`, `.doc2graph-cache.json`, `DOC2GRAPH_PROGRESS.md`,
 `DOC2GRAPH_NEXT_PROMPT.md`, and `*.egg-info`. It emits a corpus root plus
-folder/file nodes linked to each extracted document graph:
+folder/file nodes linked to each extracted document graph, then adds
+deterministic cross-document `mentions` edges when one corpus file explicitly
+names another file's title, section, decision, table, or path-derived stem:
 
 ```bash
 doc2graph ./knowledge-base --graph all --output corpus.graph.json
@@ -138,6 +140,7 @@ enabled, the content-digest and extraction fingerprint validation used for
 cache entries,
 stale cache entries pruned for the current root and graph type,
 whether the cache file was actually updated,
+the number of deterministic cross-document mention links added,
 active include/exclude patterns, extracted-file byte counts, scan budget state,
 and skip reasons
 such as unsupported extensions, include-filter mismatches, max-file limits,
