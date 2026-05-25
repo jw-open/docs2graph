@@ -452,6 +452,45 @@ def test_directory_corpus_reports_skipped_files_and_manifest(tmp_path):
     assert {n["attributes"]["reason"] for n in skipped} == {"max_files_exceeded", "unsupported_extension"}
 
 
+def test_directory_corpus_can_stop_scanning_after_max_files(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+    (docs / "c.md").write_text("# C\n\nGamma document.", encoding="utf-8")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_files=1,
+        stop_after_max_files=True,
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "max_files_exceeded"
+    ]
+
+    assert file_paths == ["a.md"]
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["stop_after_max_files"] is True
+    assert manifest["attributes"]["max_files_reached"] is True
+    assert manifest["attributes"]["max_files_scan_truncated"] is True
+    assert manifest["attributes"]["max_scan_entries_reached"] is False
+    assert manifest["attributes"]["skipped_file_count_is_complete"] is False
+    assert manifest["attributes"]["skipped_file_records_sha256_is_complete"] is False
+    assert manifest["attributes"]["skipped_by_reason"] == {"max_files_exceeded": 1}
+    assert skipped[0]["attributes"]["relative_path"] == "b.md"
+
+
 def test_directory_corpus_records_deterministic_selected_path_digest_and_order(tmp_path):
     docs = tmp_path / "docs"
     alpha = docs / "alpha"
@@ -760,6 +799,35 @@ def test_cli_accepts_max_scan_entries(tmp_path):
     assert exit_code == 0
     assert manifest["attributes"]["max_scan_entries"] == 1
     assert manifest["attributes"]["max_scan_entries_reached"] is True
+
+
+def test_cli_accepts_stop_after_max_files(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    output = tmp_path / "graph.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    exit_code = main(
+        [
+            str(docs),
+            "--graph",
+            "knowledge",
+            "--max-files",
+            "1",
+            "--stop-after-max-files",
+            "--output",
+            str(output),
+        ]
+    )
+
+    graph = json.loads(output.read_text(encoding="utf-8"))
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+
+    assert exit_code == 0
+    assert manifest["attributes"]["max_files"] == 1
+    assert manifest["attributes"]["stop_after_max_files"] is True
+    assert manifest["attributes"]["max_files_scan_truncated"] is True
 
 
 def test_document_graph_from_directory_accepts_corpus_options(tmp_path):

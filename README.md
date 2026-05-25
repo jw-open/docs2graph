@@ -83,6 +83,7 @@ path-derived stem:
 doc2graph ./knowledge-base --graph all --output corpus.graph.json
 doc2graph ./knowledge-base --graph decision --include "adr/**" --output adr.graph.json
 doc2graph ./exports --graph all --max-files 500 --max-file-bytes 10485760
+doc2graph ./exports --graph all --max-files 500 --stop-after-max-files
 doc2graph ./exports --graph all --max-total-bytes 1073741824 --output corpus.graph.json
 doc2graph ./exports --graph all --max-depth 2 --output corpus.graph.json
 doc2graph ./exports --graph all --max-scan-entries 100000 --output corpus.graph.json
@@ -92,7 +93,14 @@ doc2graph ./exports --graph all --cache .doc2graph-cache.json --output corpus.gr
 
 Large corpora are handled by deterministic limits:
 
-- `--max-files N`: stop after N supported files.
+- `--max-files N`: select at most N supported files. By default doc2graph
+  continues scanning to count later supported files as `max_files_exceeded`
+  skips, preserving complete skipped-file counts for the visited tree.
+- `--stop-after-max-files`: stop scanning at the first supported file beyond
+  `--max-files`. This is useful for huge trees when bounded traversal matters
+  more than complete excess-file counts; the manifest marks
+  `max_files_scan_truncated: true`, `skipped_file_count_is_complete: false`,
+  and `skipped_file_records_sha256_is_complete: false`.
 - `--max-file-bytes N`: skip very large individual files and add a `skipped_file` node.
 - `--max-file-bytes -1`: disable the per-file size guard.
 - `--max-total-bytes N`: stop extracting files after the cumulative extracted
@@ -159,6 +167,7 @@ stale cache entries pruned for the current root and graph type,
 whether the cache file was actually updated,
 the number of deterministic cross-document mention links added,
 active include/exclude patterns, extracted-file byte counts, scan budget state,
+whether a max-files limit intentionally truncated traversal,
 failed-file counts, and skip reasons
 such as unsupported extensions, include-filter mismatches, max-file limits,
 cumulative byte limits, oversized files,
