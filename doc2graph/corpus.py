@@ -370,7 +370,8 @@ def scan_document_files(
 ) -> CorpusScan:
     """Scan ``root`` for supported documents and bounded skipped-file metadata."""
     patterns = tuple(include or ())
-    excludes = tuple(DEFAULT_IGNORE_PATTERNS) + tuple(exclude or ())
+    default_excludes = tuple(DEFAULT_IGNORE_PATTERNS)
+    user_excludes = tuple(exclude or ())
     reserved = frozenset(_resolved_path(path) for path in reserved_paths or ())
     result = CorpusScan()
     report_limit = max(0, skip_report_limit)
@@ -378,7 +379,8 @@ def scan_document_files(
     for path in _iter_candidate_files(
         root,
         recursive=recursive,
-        excludes=excludes,
+        default_excludes=default_excludes,
+        user_excludes=user_excludes,
         max_depth=max_depth,
         scan=result,
         report_limit=report_limit,
@@ -427,7 +429,8 @@ def _iter_candidate_files(
     root: Path,
     *,
     recursive: bool,
-    excludes: Sequence[str],
+    default_excludes: Sequence[str],
+    user_excludes: Sequence[str],
     max_depth: int | None = None,
     scan: CorpusScan | None = None,
     report_limit: int = 0,
@@ -442,7 +445,17 @@ def _iter_candidate_files(
 
     for path in entries:
         rel = path.relative_to(root).as_posix()
-        if _is_ignored(path, rel, excludes):
+        ignore_reason = _ignore_reason(path, rel, default_excludes, user_excludes)
+        if ignore_reason is not None:
+            if scan is not None:
+                _record_skipped(
+                    scan,
+                    path,
+                    rel,
+                    ignore_reason,
+                    report_limit,
+                    path_type=_skip_path_type(path),
+                )
             continue
         path_kind = _path_kind(path)
         if path_kind == "symlink_directory":
@@ -465,7 +478,8 @@ def _iter_candidate_files(
                 yield from _iter_candidate_files_for_child(
                     root,
                     path,
-                    excludes,
+                    default_excludes,
+                    user_excludes,
                     max_depth=max_depth,
                     scan=scan,
                     report_limit=report_limit,
@@ -482,7 +496,8 @@ def _iter_candidate_files(
 def _iter_candidate_files_for_child(
     root: Path,
     folder: Path,
-    excludes: Sequence[str],
+    default_excludes: Sequence[str],
+    user_excludes: Sequence[str],
     *,
     max_depth: int | None = None,
     scan: CorpusScan | None = None,
@@ -498,7 +513,17 @@ def _iter_candidate_files_for_child(
 
     for path in entries:
         rel = path.relative_to(root).as_posix()
-        if _is_ignored(path, rel, excludes):
+        ignore_reason = _ignore_reason(path, rel, default_excludes, user_excludes)
+        if ignore_reason is not None:
+            if scan is not None:
+                _record_skipped(
+                    scan,
+                    path,
+                    rel,
+                    ignore_reason,
+                    report_limit,
+                    path_type=_skip_path_type(path),
+                )
             continue
         path_kind = _path_kind(path)
         if path_kind == "symlink_directory":
@@ -520,7 +545,8 @@ def _iter_candidate_files_for_child(
             yield from _iter_candidate_files_for_child(
                 root,
                 path,
-                excludes,
+                default_excludes,
+                user_excludes,
                 max_depth=max_depth,
                 scan=scan,
                 report_limit=report_limit,
@@ -570,12 +596,34 @@ def _ensure_folder_nodes(
     return parent_id
 
 
-def _is_ignored(path: Path, rel: str, patterns: Sequence[str]) -> bool:
+def _ignore_reason(
+    path: Path,
+    rel: str,
+    default_patterns: Sequence[str],
+    user_patterns: Sequence[str],
+) -> str | None:
+    if _matches_ignore_patterns(path, rel, user_patterns):
+        return "exclude_filter_match"
+    if _matches_ignore_patterns(path, rel, default_patterns):
+        return "default_ignore_match"
+    return None
+
+
+def _matches_ignore_patterns(path: Path, rel: str, patterns: Sequence[str]) -> bool:
     parts = set(path.parts)
     for pattern in patterns:
         if pattern in parts or fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(path.name, pattern):
             return True
     return False
+
+
+def _skip_path_type(path: Path) -> str:
+    try:
+        if path.is_dir():
+            return "directory"
+    except OSError:
+        return "path"
+    return "file"
 
 
 def _path_kind(path: Path) -> str:

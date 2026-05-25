@@ -96,7 +96,8 @@ Large corpora are handled by deterministic limits:
   only files directly under the corpus root and reports pruned directories.
 - `--include` / `--exclude`: repeatable glob filters for folder subsets.
   Supported files outside an include filter are counted as
-  `include_filter_mismatch` skips, with bounded sample nodes.
+  `include_filter_mismatch` skips, with bounded sample nodes. Paths matched by
+  user exclude filters are counted as `exclude_filter_match` skips.
 - `--skip-report-limit N`: cap the total number of omitted files listed as
   `skipped_file` or extraction-error nodes while still preserving aggregate
   skip counts.
@@ -122,7 +123,8 @@ enabled, stale cache entries pruned for the current root and graph type,
 active include/exclude patterns, extracted-file byte counts, and skip reasons
 such as unsupported extensions, include-filter mismatches, max-file limits,
 cumulative byte limits, oversized files,
-depth-pruned directories, symlinked directories, inaccessible paths, and
+depth-pruned directories, default ignored generated paths, user excluded paths,
+symlinked directories, inaccessible paths, and
 reserved cache/output files, and per-file extraction errors. This
 keeps large mixed-folder runs deterministic and auditable without requiring all
 omitted paths to be materialized as graph nodes.

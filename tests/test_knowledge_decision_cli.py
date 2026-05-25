@@ -464,6 +464,63 @@ def test_directory_scan_prunes_default_ignored_directories(tmp_path):
     assert file_paths == {"visible.md"}
 
 
+def test_directory_corpus_reports_default_ignored_directories(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "visible.md").write_text("# Visible\n", encoding="utf-8")
+    generated = docs / "node_modules" / "pkg"
+    generated.mkdir(parents=True)
+    (generated / "hidden.md").write_text("# Hidden\n", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", skip_report_limit=10)
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "default_ignore_match"
+    ]
+
+    assert manifest["attributes"]["skipped_by_reason"] == {"default_ignore_match": 1}
+    assert skipped[0]["attributes"]["path_type"] == "directory"
+    assert skipped[0]["attributes"]["relative_path"] == "node_modules"
+
+
+def test_directory_corpus_reports_user_excluded_paths(tmp_path):
+    docs = tmp_path / "docs"
+    adr = docs / "adr"
+    notes = docs / "notes"
+    adr.mkdir(parents=True)
+    notes.mkdir()
+    (adr / "accepted.md").write_text("# Accepted\n\nChosen option.", encoding="utf-8")
+    (notes / "draft.md").write_text("# Draft\n\nExcluded notes.", encoding="utf-8")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        exclude=["notes"],
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "exclude_filter_match"
+    ]
+
+    assert manifest["attributes"]["exclude_patterns"] == ["notes"]
+    assert manifest["attributes"]["skipped_by_reason"] == {"exclude_filter_match": 1}
+    assert file_paths == ["adr/accepted.md"]
+    assert skipped[0]["attributes"]["path_type"] == "directory"
+    assert skipped[0]["attributes"]["relative_path"] == "notes"
+
+
 def test_directory_corpus_reports_symlinked_directories_without_descending(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
