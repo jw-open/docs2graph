@@ -189,6 +189,11 @@ such as `Context engineering is ...` become `definition` nodes connected to
 their `concept` with `defines` and `defined_by` edges, while preserving section
 and citation provenance.
 
+Claim-to-evidence support edges are deterministic and conservative. Evidence
+in the same section is preferred, and cross-section support is only added when
+the claim and evidence share meaningful terms, which avoids noisy support paths
+between unrelated claims in large documents.
+
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, total selected bytes, a deterministic selected-path ordering contract,
 and SHA-256 digests for selected paths and selected file records,

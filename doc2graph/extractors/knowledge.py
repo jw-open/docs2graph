@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import hashlib
 from collections import Counter
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from ..types import GraphDict, make_edge, make_node
 
@@ -68,6 +68,38 @@ _EVIDENCE_CUES = (
     "precision",
     "%",
 )
+
+_SUPPORT_STOPWORDS = {
+    "about",
+    "after",
+    "also",
+    "because",
+    "before",
+    "being",
+    "between",
+    "could",
+    "document",
+    "during",
+    "from",
+    "have",
+    "into",
+    "more",
+    "paper",
+    "show",
+    "shows",
+    "that",
+    "their",
+    "there",
+    "these",
+    "this",
+    "through",
+    "using",
+    "when",
+    "where",
+    "which",
+    "with",
+    "would",
+}
 
 
 def extract_knowledge_graph(
@@ -220,10 +252,11 @@ def extract_knowledge_graph(
             definition_count += 1
 
     claim_count = 0
-    evidence_nodes: List[Tuple[str, str, str]] = []
+    claim_records: List[Dict[str, Any]] = []
+    evidence_records: List[Dict[str, Any]] = []
     for index, section in enumerate(sections):
         section_id = _source_node_id("section", f"{index}-{section['title']}", source)
-        for sentence in _sentences(section["content"]):
+        for sentence_index, sentence in enumerate(_sentences(section["content"])):
             lower = sentence.lower()
             if claim_count < max_claims and any(cue in lower for cue in _CLAIM_CUES):
                 claim_id = _source_node_id("claim", sentence, source)
@@ -247,10 +280,21 @@ def extract_knowledge_graph(
                     doc_id,
                     reference_ids,
                 )
+                claim_records.append({
+                    "id": claim_id,
+                    "section_index": index,
+                    "sentence_index": sentence_index,
+                    "text": sentence,
+                })
                 claim_count += 1
             if any(cue in lower for cue in _EVIDENCE_CUES):
                 evidence_id = _source_node_id("evidence", sentence, source)
-                evidence_nodes.append((evidence_id, section_id, sentence))
+                evidence_records.append({
+                    "id": evidence_id,
+                    "section_index": index,
+                    "sentence_index": sentence_index,
+                    "text": sentence,
+                })
                 _add_node(nodes, seen_nodes, evidence_id, _label(sentence), sentence, {
                     "type": "evidence",
                     "source": source,
@@ -272,10 +316,7 @@ def extract_knowledge_graph(
                     reference_ids,
                 )
 
-    claim_ids = [n["id"] for n in nodes if n.get("attributes", {}).get("type") == "claim"]
-    for evidence_id, _, _ in evidence_nodes:
-        for claim_id in claim_ids[:5]:
-            _add_edge(edges, seen_edges, claim_id, evidence_id, "supported_by")
+    _add_support_edges(edges, seen_edges, claim_records, evidence_records)
 
     return {"nodes": nodes, "edges": edges, "current_node_id": doc_id}
 
@@ -378,6 +419,58 @@ def _extract_citations(text: str) -> Iterable[str]:
         citations.extend(part.strip() for part in match.group(1).split(","))
     citations.extend(match.group(1) for match in _AUTHOR_YEAR_RE.finditer(text))
     return citations
+
+
+def _add_support_edges(
+    edges: List[Dict[str, Any]],
+    seen_edges: set,
+    claim_records: Sequence[Dict[str, Any]],
+    evidence_records: Sequence[Dict[str, Any]],
+    *,
+    max_evidence_per_claim: int = 5,
+) -> None:
+    """
+    Link claims only to evidence with local or lexical support.
+
+    Earlier extraction linked every evidence snippet to the first few claims,
+    which made large documents look more connected than their text warranted.
+    This keeps support deterministic while preferring evidence in the same
+    section, then evidence with shared meaningful terms.
+    """
+    if not claim_records or not evidence_records:
+        return
+
+    evidence_tokens = {
+        evidence["id"]: _support_tokens(evidence.get("text", ""))
+        for evidence in evidence_records
+    }
+    for claim in claim_records:
+        claim_tokens = _support_tokens(claim.get("text", ""))
+        ranked: List[Tuple[int, int, int, str]] = []
+        for evidence in evidence_records:
+            lexical_overlap = len(claim_tokens & evidence_tokens[evidence["id"]])
+            same_section = claim["section_index"] == evidence["section_index"]
+            if not same_section and lexical_overlap == 0:
+                continue
+            section_distance = abs(claim["section_index"] - evidence["section_index"])
+            sentence_distance = abs(claim["sentence_index"] - evidence["sentence_index"])
+            ranked.append((
+                0 if same_section else 1,
+                -lexical_overlap,
+                section_distance * 1000 + sentence_distance,
+                evidence["id"],
+            ))
+
+        for _, _, _, evidence_id in sorted(ranked)[:max_evidence_per_claim]:
+            _add_edge(edges, seen_edges, claim["id"], evidence_id, "supported_by")
+
+
+def _support_tokens(text: str) -> set[str]:
+    tokens = set()
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9\-]{3,}", text.lower()):
+        if token not in _SUPPORT_STOPWORDS:
+            tokens.add(token)
+    return tokens
 
 
 def _extract_reference_entries(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

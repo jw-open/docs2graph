@@ -209,6 +209,43 @@ Context engineering is the process of selecting structured context for a model.
     assert any(e["from"] == definition["id"] and e["to"] == citation["id"] and e["label"] == "cites" for e in graph["edges"])
 
 
+def test_extract_knowledge_graph_links_evidence_to_relevant_claims():
+    text = """# Cache
+
+We propose a cache indexing method for repeated document extraction.
+
+# Parser
+
+We propose a parser recall model for table extraction.
+Evaluation results show parser recall improves by 20% on table documents.
+"""
+    graph = extract_knowledge_graph(text, source="support.md")
+    nodes_by_id = {n["id"]: n for n in graph["nodes"]}
+    cache_claim = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "claim"
+        and "cache indexing" in (n.get("content") or "")
+    )
+    parser_claim = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "claim"
+        and "parser recall model" in (n.get("content") or "")
+    )
+    parser_evidence = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "evidence"
+        and "parser recall improves" in (n.get("content") or "")
+    )
+    supported_by = [e for e in graph["edges"] if e["label"] == "supported_by"]
+
+    assert any(e["from"] == parser_claim["id"] and e["to"] == parser_evidence["id"] for e in supported_by)
+    assert not any(e["from"] == cache_claim["id"] and e["to"] == parser_evidence["id"] for e in supported_by)
+    assert all(nodes_by_id[e["from"]]["attributes"]["type"] == "claim" for e in supported_by)
+
+
 def test_extract_decision_graph_roles_and_edges():
     graph = extract_decision_graph(DECISION, source="adr.md")
     node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
