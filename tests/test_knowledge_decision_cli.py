@@ -494,6 +494,35 @@ def test_build_graph_from_directory_corpus(tmp_path):
     assert "extracted_as" in labels
 
 
+def test_directory_corpus_includes_json_and_jsonl_files(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "config.json").write_text(
+        '{"title":"Corpus Cache","decision":"Reuse unchanged per-file graphs."}',
+        encoding="utf-8",
+    )
+    (docs / "events.jsonl").write_text(
+        '{"event":"cache_hit","detail":"Warm corpus extraction reused the JSON graph."}\n',
+        encoding="utf-8",
+    )
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", skip_report_limit=10)
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    files = {
+        n["attributes"]["relative_path"]: n["attributes"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    }
+    contents = "\n".join(n.get("content") or "" for n in graph["nodes"])
+
+    assert manifest["attributes"]["selected_file_count"] == 2
+    assert manifest["attributes"]["skipped_by_reason"] == {}
+    assert files["config.json"]["status"] == "extracted"
+    assert files["events.jsonl"]["status"] == "extracted"
+    assert "Corpus Cache" in contents
+    assert "cache_hit" in contents
+
+
 def test_directory_corpus_preserves_same_heading_sections_per_source(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()

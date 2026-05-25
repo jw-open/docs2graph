@@ -5,6 +5,7 @@ from .docx import load_docx
 from .pptx import load_pptx
 from .html import load_html, parse_html_string
 from .csv import load_csv
+from .json import load_json
 from .code import load_code, detect_language
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "load_html",
     "parse_html_string",
     "load_csv",
+    "load_json",
     "load_code",
     "detect_language",
 ]

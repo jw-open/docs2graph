@@ -32,7 +32,7 @@ Entity extraction ──► Relationship extraction
           Your LLM prompt
 ```
 
-1. Feed it a document or folder tree — PDF, Google Doc export URL, Markdown, plain text, HTML, image/chart, code file, or mixed document corpus
+1. Feed it a document or folder tree — PDF, Google Doc export URL, Markdown, plain text, HTML, JSON/JSONL, image/chart, code file, or mixed document corpus
 2. It extracts entities (people, concepts, terms, sections) as nodes
 3. It extracts relationships (references, defines, depends-on, authored-by) as edges
 4. You query the graph and get back only the relevant subgraph
@@ -65,6 +65,7 @@ doc2graph ./docs --graph all --output docs-corpus.graph.json
 - URLs: generic text/HTML URLs and public/exportable Google Docs, Sheets, and Slides URLs
 - Source/config files: Python, JavaScript/TypeScript, SQL, YAML, JSON, TOML, shell, and other common text code formats
 - Directories: recursive mixed-format corpora with folder/file provenance nodes
+- JSON/JSONL: deterministic structured-text extraction for config files, exports, and line-delimited records
 
 Private Google Workspace documents require either public export access or
 `GOOGLE_DOCS_BEARER_TOKEN` with permission to read the document.

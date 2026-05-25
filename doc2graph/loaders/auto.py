@@ -23,6 +23,11 @@ def load_document(path: str) -> str:
     p = Path(path)
     suffix = p.suffix.lower()
 
+    if suffix in {".json", ".jsonl"}:
+        from .json import load_json
+
+        return load_json(path)
+
     from .code import CODE_SUFFIXES
 
     if suffix in CODE_SUFFIXES and suffix not in {".md", ".markdown", ".mdx"}:

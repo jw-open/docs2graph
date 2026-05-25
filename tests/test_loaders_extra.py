@@ -13,6 +13,8 @@ import pytest
 
 from doc2graph.loaders.html import load_html, parse_html_string
 from doc2graph.loaders.csv import load_csv
+from doc2graph.loaders.json import load_json
+from doc2graph.loaders.auto import load_document
 
 _DOCX_MOD = "doc2graph.loaders.docx"
 _PPTX_MOD = "doc2graph.loaders.pptx"
@@ -144,6 +146,71 @@ class TestLoadCsv:
         assert "Bob" in text
         lines = [l for l in text.strip().split("\n") if l]
         assert len(lines) == 2
+
+
+# ---------------------------------------------------------------------------
+# JSON loader (no mocking needed — uses stdlib only)
+# ---------------------------------------------------------------------------
+
+class TestLoadJson:
+    def test_json_object_renders_sorted_key_paths(self, tmp_path):
+        f = tmp_path / "record.json"
+        f.write_text(
+            '{"title":"Cache ADR","metadata":{"owner":"platform"},"tags":["cache","corpus"]}',
+            encoding="utf-8",
+        )
+
+        text = load_json(str(f))
+        lines = text.splitlines()
+
+        assert lines == [
+            "metadata.owner: platform",
+            "tags.0: cache",
+            "tags.1: corpus",
+            "title: Cache ADR",
+        ]
+
+    def test_auto_loader_uses_structured_json_loader(self, tmp_path):
+        f = tmp_path / "record.json"
+        f.write_text('{"title":"Cache ADR"}', encoding="utf-8")
+
+        assert load_document(str(f)) == "title: Cache ADR"
+
+    def test_jsonl_preserves_record_order(self, tmp_path):
+        f = tmp_path / "events.jsonl"
+        f.write_text(
+            '{"event":"created","id":1}\n\n{"event":"updated","id":2}\n',
+            encoding="utf-8",
+        )
+
+        text = load_json(str(f))
+
+        assert text.splitlines() == [
+            "record 1.event: created",
+            "record 1.id: 1",
+            "record 2.event: updated",
+            "record 2.id: 2",
+        ]
+
+    def test_max_items_limits_top_level_json_items(self, tmp_path):
+        f = tmp_path / "record.json"
+        f.write_text('{"b":2,"a":1,"c":3}', encoding="utf-8")
+
+        assert load_json(str(f), max_items=2).splitlines() == ["a: 1", "b: 2"]
+
+    def test_invalid_jsonl_reports_line_number(self, tmp_path):
+        f = tmp_path / "events.jsonl"
+        f.write_text('{"ok":true}\nnot json\n', encoding="utf-8")
+
+        with pytest.raises(ValueError, match="line 2"):
+            load_json(str(f))
+
+    def test_wrong_extension_raises(self, tmp_path):
+        f = tmp_path / "record.txt"
+        f.write_text('{"title":"Nope"}', encoding="utf-8")
+
+        with pytest.raises(ValueError, match=".json"):
+            load_json(str(f))
 
 
 # ---------------------------------------------------------------------------
