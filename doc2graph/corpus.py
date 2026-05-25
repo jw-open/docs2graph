@@ -6,6 +6,7 @@ import fnmatch
 import hashlib
 import json
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 
@@ -53,6 +54,37 @@ DEFAULT_IGNORE_PATTERNS = (
     ".nuxt",
     "coverage",
 )
+
+EXTRACTION_FINGERPRINT_PATHS = (
+    "cli.py",
+    "types.py",
+    "loaders/auto.py",
+    "loaders/code.py",
+    "loaders/csv.py",
+    "loaders/docx.py",
+    "loaders/google.py",
+    "loaders/html.py",
+    "loaders/markdown.py",
+    "loaders/ocr.py",
+    "loaders/pdf.py",
+    "loaders/pptx.py",
+    "loaders/text.py",
+    "loaders/url.py",
+)
+
+EXTRACTION_FINGERPRINT_BY_GRAPH_TYPE = {
+    "knowledge": ("extractors/knowledge.py", "extractors/links.py"),
+    "decision": ("extractors/decision.py",),
+    "schema": ("extractors/schema.py",),
+    "media": ("extractors/media.py",),
+    "all": (
+        "extractors/knowledge.py",
+        "extractors/links.py",
+        "extractors/decision.py",
+        "extractors/schema.py",
+        "extractors/media.py",
+    ),
+}
 
 
 def build_corpus_graph(
@@ -141,6 +173,9 @@ def build_corpus_graph(
         "extraction_method": "static",
         "cache_enabled": cache_stats["enabled"],
         "cache_path": cache_stats["path"],
+        "cache_extraction_fingerprint": _extraction_fingerprint(graph_type)
+        if cache_stats["enabled"]
+        else None,
         "cache_hits": cache_stats["hits"],
         "cache_misses": cache_stats["misses"],
         "cache_writes": cache_stats["writes"],
@@ -733,10 +768,33 @@ def _file_metadata(root: Path, path: Path, graph_type: str) -> Dict[str, Any]:
         "root": str(root.resolve()),
         "relative_path": path.relative_to(root).as_posix(),
         "graph_type": graph_type,
+        "extraction_fingerprint": _extraction_fingerprint(graph_type),
         "size_bytes": stat.st_size,
         "mtime_ns": stat.st_mtime_ns,
         "suffix": path.suffix.lower(),
     }
+
+
+@lru_cache(maxsize=None)
+def _extraction_fingerprint(graph_type: str) -> str:
+    """Fingerprint code that can affect deterministic per-file graph extraction."""
+    base = Path(__file__).resolve().parent
+    relative_paths = sorted(
+        set(EXTRACTION_FINGERPRINT_PATHS)
+        | set(EXTRACTION_FINGERPRINT_BY_GRAPH_TYPE.get(graph_type, ()))
+    )
+    digest = hashlib.sha256()
+    digest.update(graph_type.encode("utf-8"))
+    for relative_path in relative_paths:
+        path = base / relative_path
+        digest.update(relative_path.encode("utf-8"))
+        digest.update(b"\0")
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            digest.update(b"<missing>")
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def _cache_key(root: Path, path: Path, graph_type: str) -> str:

@@ -648,6 +648,38 @@ def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
     assert refreshed_manifest["attributes"]["cache_writes"] == 2
 
 
+def test_directory_corpus_invalidates_cache_when_extraction_fingerprint_changes(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+
+    first = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    entry = next(iter(payload["entries"].values()))
+    entry["metadata"]["extraction_fingerprint"] = "outdated"
+    cache.write_text(json.dumps(payload), encoding="utf-8")
+
+    second = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    first_manifest = next(
+        n for n in first["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest"
+    )
+    second_manifest = next(
+        n for n in second["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest"
+    )
+    refreshed_payload = json.loads(cache.read_text(encoding="utf-8"))
+    refreshed_entry = next(iter(refreshed_payload["entries"].values()))
+
+    assert first_manifest["attributes"]["cache_extraction_fingerprint"]
+    assert first_manifest["attributes"]["cache_misses"] == 1
+    assert second_manifest["attributes"]["cache_hits"] == 0
+    assert second_manifest["attributes"]["cache_misses"] == 1
+    assert second_manifest["attributes"]["cache_writes"] == 1
+    assert refreshed_entry["metadata"]["extraction_fingerprint"] == second_manifest["attributes"][
+        "cache_extraction_fingerprint"
+    ]
+
+
 def test_directory_corpus_prunes_stale_cache_entries(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
