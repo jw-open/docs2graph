@@ -74,6 +74,19 @@ BULLET_DECISION = """# ADR: Cache repeated corpus extraction
 """
 
 
+TABLE_DECISION = """# Problem
+
+The team needs a repeatable ingestion strategy.
+
+# Options
+
+| Option | Pros | Cons | Tradeoff | Decision | Confidence |
+| --- | --- | --- | --- | --- | --- |
+| Batch rebuild | simple to reason about | slow on large corpora | no cache invalidation risk | Rejected | Low |
+| Content cache | fast repeated runs | cache metadata must be correct | extra cache file management | Selected | High |
+"""
+
+
 def test_extract_knowledge_graph_for_paper_signals():
     graph = extract_knowledge_graph(PAPER, source="paper.md")
     node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
@@ -152,6 +165,38 @@ def test_decision_selects_named_option_not_last_option():
 
     assert any(e["to"] == option_a["id"] for e in select_edges)
     assert all(e["to"] != option_b["id"] for e in select_edges)
+
+
+def test_extract_decision_graph_from_option_table():
+    graph = extract_decision_graph(TABLE_DECISION, source="table-adr.md")
+    nodes = graph["nodes"]
+    node_types = {n.get("attributes", {}).get("type") for n in nodes}
+    labels = {e["label"] for e in graph["edges"]}
+    content_cache = next(n for n in nodes if n["label"] == "Content cache")
+    selected_decision = next(
+        n
+        for n in nodes
+        if n.get("attributes", {}).get("type") == "decision"
+        and n.get("content") == "Selected"
+    )
+    high_confidence = next(
+        n
+        for n in nodes
+        if n.get("attributes", {}).get("type") == "confidence"
+        and n.get("content") == "High"
+    )
+
+    assert {"option", "pros", "cons", "tradeoff", "decision", "confidence"} <= node_types
+    assert {"has_option", "pros", "cons", "tradeoff", "selects", "has_confidence"} <= labels
+    assert any(
+        e["from"] == selected_decision["id"] and e["to"] == content_cache["id"] and e["label"] == "selects"
+        for e in graph["edges"]
+    )
+    assert any(
+        e["from"] == selected_decision["id"] and e["to"] == high_confidence["id"] and e["label"] == "has_confidence"
+        for e in graph["edges"]
+    )
+    assert high_confidence["attributes"]["confidence_value"] == "High"
 
 
 def test_build_graph_and_document_graph_from_document(tmp_path):
