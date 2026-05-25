@@ -90,6 +90,8 @@ _GENERIC_CROSS_DOC_ALIASES = {
     "summary",
 }
 
+DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024
+
 DEFAULT_IGNORE_PATTERNS = (
     ".git",
     ".hg",
@@ -155,7 +157,7 @@ def build_corpus_graph(
     stop_after_max_files: bool = False,
     max_depth: int | None = None,
     max_scan_entries: int | None = None,
-    max_file_bytes: int | None = 25 * 1024 * 1024,
+    max_file_bytes: int | None = DEFAULT_MAX_FILE_BYTES,
     max_total_bytes: int | None = None,
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
@@ -275,6 +277,7 @@ def build_corpus_graph(
         "cache_misses": cache_stats["misses"],
         "cache_writes": cache_stats["writes"],
         "cache_pruned": cache_stats["pruned"],
+        "cache_prune_status": None,
         "cache_file_updated": False,
         "cache_write_status": None,
         "cache_write_error": None,
@@ -525,8 +528,22 @@ def build_corpus_graph(
     nodes[0]["attributes"]["failed_file_count"] = failed_file_count
     nodes[0]["attributes"]["extracted_total_bytes"] = extracted_total_bytes
     if cache_path is not None:
-        cache_stats["pruned"] = _prune_cache(cache, root, graph_type, active_cache_keys)
+        prune_status = _cache_prune_status(
+            scan,
+            recursive=recursive,
+            max_files=max_files,
+            max_depth=max_depth,
+            max_scan_entries=max_scan_entries,
+            max_file_bytes=max_file_bytes,
+            max_total_bytes=max_total_bytes,
+        )
+        cache_stats["pruned"] = (
+            _prune_cache(cache, root, graph_type, active_cache_keys)
+            if prune_status == "complete_selection"
+            else 0
+        )
         manifest_attrs["cache_pruned"] = cache_stats["pruned"]
+        manifest_attrs["cache_prune_status"] = prune_status
         cache_stats["entry_count_after"] = _cache_entry_count(cache)
         manifest_attrs["cache_entry_count_after"] = cache_stats["entry_count_after"]
         cache_write = _write_cache_with_status(cache_path, cache)
@@ -1219,6 +1236,35 @@ def _prune_cache(
     for key in stale_keys:
         del entries[key]
     return len(stale_keys)
+
+
+def _cache_prune_status(
+    scan: CorpusScan,
+    *,
+    recursive: bool,
+    max_files: int | None,
+    max_depth: int | None,
+    max_scan_entries: int | None,
+    max_file_bytes: int | None,
+    max_total_bytes: int | None,
+) -> str:
+    """
+    Return whether stale cache pruning is safe for this corpus run.
+
+    Cache entries are keyed by corpus root and graph type. A complete directory
+    selection can safely remove absent keys because missing active keys mean the
+    file disappeared or filters intentionally excluded it. Bounded traversal or
+    extraction runs should keep unrelated warm entries for later full runs.
+    """
+    if scan.scan_truncated:
+        return "skipped_truncated_scan"
+    if not recursive or max_files is not None or max_depth is not None:
+        return "skipped_bounded_selection"
+    if max_scan_entries is not None:
+        return "skipped_bounded_selection"
+    if max_file_bytes not in (None, DEFAULT_MAX_FILE_BYTES) or max_total_bytes is not None:
+        return "skipped_bounded_extraction"
+    return "complete_selection"
 
 
 def _add_runtime_skip(

@@ -141,7 +141,11 @@ Large corpora are handled by deterministic limits:
   first run. Cache writes are best-effort: if the graph extraction succeeds
   but the cache path cannot be written, the run still returns the graph and
   reports `cache_write_status: write_error` plus `cache_write_error` in the
-  manifest.
+  manifest. Cache pruning is limited to complete selections. Bounded traversal
+  or extraction runs, such as `--max-files`, `--max-depth`,
+  `--max-scan-entries`, custom `--max-file-bytes`, or `--max-total-bytes`,
+  preserve warm entries for files outside the current run and report the
+  reason in `cache_prune_status`.
 - `--output PATH`: when the output file already exists inside the scanned
   corpus directory, doc2graph reserves it too, even if it has a supported
   document extension such as `.md` or `.txt`.
@@ -167,6 +171,7 @@ enabled, the content-digest and extraction fingerprint validation used for
 cache entries,
 the cache load status and before/after cache entry counts,
 stale cache entries pruned for the current root and graph type,
+whether cache pruning was safe for the current selection,
 whether the cache file was actually updated,
 cache write status and write errors when an explicit cache path cannot be updated,
 the number of deterministic cross-document mention links added,

@@ -1328,6 +1328,67 @@ def test_directory_corpus_prunes_cache_entries_outside_current_include(tmp_path)
     assert cached_paths == {"a.md"}
 
 
+def test_directory_corpus_keeps_cache_entries_outside_max_files_run(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    for name in ("a.md", "b.md", "c.md"):
+        (docs / name).write_text(f"# {name}\n\nCached document.", encoding="utf-8")
+
+    build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    limited = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_files=1,
+        cache_path=cache,
+    )
+
+    manifest = next(n for n in limited["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    cached_paths = {
+        entry["metadata"]["relative_path"]
+        for entry in payload["entries"].values()
+        if entry.get("metadata", {}).get("root") == str(docs.resolve())
+    }
+
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["cache_hits"] == 1
+    assert manifest["attributes"]["cache_pruned"] == 0
+    assert manifest["attributes"]["cache_prune_status"] == "skipped_bounded_selection"
+    assert cached_paths == {"a.md", "b.md", "c.md"}
+
+
+def test_directory_corpus_keeps_cache_entries_outside_total_byte_budget(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    first_size = (docs / "a.md").stat().st_size
+    limited = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_total_bytes=first_size,
+        cache_path=cache,
+    )
+
+    manifest = next(n for n in limited["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    cached_paths = {
+        entry["metadata"]["relative_path"]
+        for entry in payload["entries"].values()
+        if entry.get("metadata", {}).get("root") == str(docs.resolve())
+    }
+
+    assert manifest["attributes"]["extracted_file_count"] == 1
+    assert manifest["attributes"]["cache_hits"] == 1
+    assert manifest["attributes"]["cache_pruned"] == 0
+    assert manifest["attributes"]["cache_prune_status"] == "skipped_bounded_extraction"
+    assert cached_paths == {"a.md", "b.md"}
+
+
 def test_directory_corpus_does_not_extract_cache_file_inside_corpus(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
