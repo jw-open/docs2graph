@@ -412,6 +412,8 @@ def test_directory_corpus_skip_report_limit_bounds_nodes(tmp_path):
 
     assert manifest["attributes"]["skipped_by_reason"] == {"unsupported_extension": 3}
     assert manifest["attributes"]["reported_skipped_file_count"] == 1
+    assert manifest["attributes"]["unreported_skipped_file_count"] == 2
+    assert manifest["attributes"]["skip_report_truncated"] is True
     assert len(reported_skips) == 1
 
 
@@ -439,6 +441,8 @@ def test_directory_corpus_skip_report_limit_bounds_scan_and_runtime_skips(tmp_pa
         "unsupported_extension": 1,
     }
     assert manifest["attributes"]["reported_skipped_file_count"] == 1
+    assert manifest["attributes"]["unreported_skipped_file_count"] == 1
+    assert manifest["attributes"]["skip_report_truncated"] is True
     assert len(reported_skips) == 1
     assert reported_skips[0]["attributes"]["reason"] == "unsupported_extension"
 
@@ -469,7 +473,9 @@ def test_directory_corpus_limits_total_extracted_bytes(tmp_path):
     assert manifest["attributes"]["max_total_bytes"] == first_size
     assert manifest["attributes"]["max_total_bytes_reached"] is True
     assert manifest["attributes"]["skipped_by_reason"] == {"max_total_bytes_exceeded": 1}
+    assert manifest["attributes"]["skip_report_truncated"] is False
     assert skipped[0]["attributes"]["relative_path"] == "b.md"
+    assert skipped[0]["attributes"]["path_type"] == "file"
 
 
 def test_directory_corpus_stops_after_total_byte_budget_is_reached(tmp_path):

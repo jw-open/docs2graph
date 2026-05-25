@@ -111,7 +111,9 @@ Large corpora are handled by deterministic limits:
   user exclude filters are counted as `exclude_filter_match` skips.
 - `--skip-report-limit N`: cap the total number of omitted files listed as
   `skipped_file` or extraction-error nodes while still preserving aggregate
-  skip counts.
+  skip counts. The corpus manifest reports how many skips were materialized as
+  nodes, how many were omitted by this cap, and whether the skip report was
+  truncated.
 - `--cache PATH`: opt into a JSON cache that reuses unchanged per-file graph
   extraction across repeated corpus runs. If the cache file is inside the
   scanned corpus directory, doc2graph reserves it as an output artifact and

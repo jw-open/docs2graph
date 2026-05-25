@@ -210,6 +210,12 @@ def build_corpus_graph(
         "selected_file_count": len(files),
         "skipped_file_count": scan.skipped_count,
         "skipped_by_reason": dict(sorted(scan.skipped_by_reason.items())),
+        "reported_skipped_file_count": len(scan.skipped_samples),
+        "unreported_skipped_file_count": max(
+            0,
+            scan.skipped_count - len(scan.skipped_samples),
+        ),
+        "skip_report_truncated": scan.skipped_count > len(scan.skipped_samples),
         "include_patterns": list(include or ()),
         "exclude_patterns": list(exclude or ()),
         "skip_report_limit": skip_report_limit,
@@ -322,6 +328,7 @@ def build_corpus_graph(
                 total_report_limit=total_report_limit,
                 existing_reported_count=len(scan.skipped_samples) + runtime_reported_skips,
                 attributes={
+                    "path_type": "file",
                     "max_total_bytes": max_total_bytes,
                     "current_total_bytes": extracted_total_bytes,
                     "size_bytes": size,
@@ -342,7 +349,11 @@ def build_corpus_graph(
                 runtime_skipped_by_reason,
                 total_report_limit=total_report_limit,
                 existing_reported_count=len(scan.skipped_samples) + runtime_reported_skips,
-                attributes={"max_file_bytes": max_file_bytes, "size_bytes": size},
+                attributes={
+                    "path_type": "file",
+                    "max_file_bytes": max_file_bytes,
+                    "size_bytes": size,
+                },
             )
             continue
 
@@ -365,6 +376,7 @@ def build_corpus_graph(
                 total_report_limit=total_report_limit,
                 existing_reported_count=len(scan.skipped_samples) + runtime_reported_skips,
                 attributes={
+                    "path_type": "file",
                     "max_total_bytes": max_total_bytes,
                     "current_total_bytes": extracted_total_bytes,
                     "size_bytes": size,
@@ -446,6 +458,13 @@ def build_corpus_graph(
     manifest_attrs["skipped_file_count_is_complete"] = not scan.scan_truncated
     manifest_attrs["skipped_by_reason"] = dict(sorted(scan.skipped_by_reason.items()))
     manifest_attrs["reported_skipped_file_count"] = len(scan.skipped_samples) + runtime_reported_skips
+    manifest_attrs["unreported_skipped_file_count"] = max(
+        0,
+        scan.skipped_count - manifest_attrs["reported_skipped_file_count"],
+    )
+    manifest_attrs["skip_report_truncated"] = (
+        manifest_attrs["unreported_skipped_file_count"] > 0
+    )
     manifest_attrs["max_scan_entries_reached"] = scan.scan_truncated
     manifest_attrs["scanned_entry_count"] = scan.scanned_entry_count
     manifest_attrs["max_total_bytes_reached"] = (
