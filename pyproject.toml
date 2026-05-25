@@ -39,6 +39,9 @@ pptx = [
 [project.urls]
 Repository = "https://github.com/jw-open/doc2graph"
 
+[project.scripts]
+doc2graph = "doc2graph.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["doc2graph*"]

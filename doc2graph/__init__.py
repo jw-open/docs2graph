@@ -7,7 +7,10 @@ Query what's in your files without dumping the whole text into a prompt.
 from .graph import DocumentGraph
 from .ranking import personalized_page_rank
 from .types import make_node, make_edge
+from .extractors.knowledge import extract_knowledge_graph
+from .extractors.decision import extract_decision_graph
 from .extractors.schema import extract_schema_graph
+from .loaders.auto import load_document
 from .loaders.ocr import load_ocr, load_image_ocr, load_pdf_ocr
 from .loaders.docx import load_docx
 from .loaders.pptx import load_pptx
@@ -21,7 +24,10 @@ __all__ = [
     "personalized_page_rank",
     "make_node",
     "make_edge",
+    "extract_knowledge_graph",
+    "extract_decision_graph",
     "extract_schema_graph",
+    "load_document",
     "load_ocr",
     "load_image_ocr",
     "load_pdf_ocr",

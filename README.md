@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 
-**Turn documents into queryable knowledge graphs — no LLM required.**
+**Turn documents into queryable knowledge and decision graphs — no LLM required by default.**
 
 When you need to answer questions over long files, reports, or corpora, naively chunking and embedding loses the structure. doc2graph extracts entities, relationships, and context as a graph — so you can traverse it, rank it, and feed exactly what's relevant to your LLM.
 
@@ -38,6 +38,51 @@ Entity extraction ──► Relationship extraction
 4. You query the graph and get back only the relevant subgraph
 5. Pass that focused context to any LLM
 
+### Current graph modes
+
+```bash
+doc2graph paper.md --graph knowledge --output paper.graph.json
+doc2graph architecture.md --graph decision --output decisions.graph.json
+doc2graph schema.md --graph schema --output schema.graph.json
+doc2graph docs.md --graph all --output docs.graph.json
+```
+
+- `knowledge`: document, section, concept, claim, evidence, citation, and URL nodes.
+- `decision`: problem, context, option, pros, cons, tradeoff, decision, and consequence nodes.
+- `schema`: table/entity graphs from schema docs and data dictionaries.
+- `all`: merged graph from the supported document extractors.
+
+Outputs are plain JSON:
+
+```json
+{
+  "nodes": [
+    {
+      "id": "claim:this_paper_proposes_a_graph_based_approach",
+      "label": "This paper proposes a graph based approach",
+      "content": "This paper proposes a graph based approach...",
+      "attributes": {
+        "type": "claim",
+        "source": "paper.md",
+        "extraction_method": "static"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "section:0_abstract",
+      "to": "claim:this_paper_proposes_a_graph_based_approach",
+      "label": "contains"
+    }
+  ],
+  "current_node_id": "document:paper_md"
+}
+```
+
+The base graph is static and deterministic. LLM enrichment should be optional
+and provenance-labeled, for example `extraction_method=llm_inferred`, so
+inferred reasoning is not confused with documented evidence.
+
 ---
 
 ## Planned use cases
@@ -61,6 +106,15 @@ g.extract()                      # builds nodes + edges
 
 context = g.rank("what are the key risks?", k=5)
 # context["nodes"] + context["edges"] → pass to your LLM
+```
+
+Current document-native API:
+
+```python
+from doc2graph import DocumentGraph, extract_knowledge_graph, extract_decision_graph
+
+g = DocumentGraph.from_document("paper.md", graph_type="knowledge")
+decisions = DocumentGraph.from_document("adr.md", graph_type="decision")
 ```
 
 ### Load from multiple files
