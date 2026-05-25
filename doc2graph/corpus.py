@@ -180,6 +180,7 @@ def build_corpus_graph(
         "cache_misses": cache_stats["misses"],
         "cache_writes": cache_stats["writes"],
         "cache_pruned": cache_stats["pruned"],
+        "cache_file_updated": False,
         "cache_refresh": cache_stats["refresh"],
     }
     nodes: List[Dict[str, Any]] = [
@@ -383,7 +384,7 @@ def build_corpus_graph(
     if cache_path is not None:
         cache_stats["pruned"] = _prune_cache(cache, root, graph_type, active_cache_keys)
         manifest_attrs["cache_pruned"] = cache_stats["pruned"]
-        _write_cache(cache_path, cache)
+        manifest_attrs["cache_file_updated"] = _write_cache(cache_path, cache)
     return _merge_graphs([corpus_graph, *graph_parts])
 
 
@@ -823,15 +824,23 @@ def _load_cache(cache_path: str | Path | None) -> Dict[str, Any]:
     return payload
 
 
-def _write_cache(cache_path: str | Path, cache: Dict[str, Any]) -> None:
+def _write_cache(cache_path: str | Path, cache: Dict[str, Any]) -> bool:
     path = Path(cache_path)
+    payload = _serialize_cache(cache)
+    try:
+        if path.exists() and path.read_text(encoding="utf-8") == payload:
+            return False
+    except OSError:
+        pass
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(f"{path.name}.tmp")
-    temp.write_text(
-        json.dumps(cache, sort_keys=True, separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
+    temp.write_text(payload, encoding="utf-8")
     temp.replace(path)
+    return True
+
+
+def _serialize_cache(cache: Dict[str, Any]) -> str:
+    return json.dumps(cache, sort_keys=True, separators=(",", ":")) + "\n"
 
 
 def _prune_cache(

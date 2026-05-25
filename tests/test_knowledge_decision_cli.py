@@ -679,13 +679,16 @@ def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
     assert first_manifest["attributes"]["cache_hits"] == 0
     assert first_manifest["attributes"]["cache_misses"] == 2
     assert first_manifest["attributes"]["cache_writes"] == 2
+    assert first_manifest["attributes"]["cache_file_updated"] is True
     assert second_manifest["attributes"]["cache_hits"] == 2
     assert second_manifest["attributes"]["cache_misses"] == 0
     assert second_manifest["attributes"]["cache_writes"] == 0
+    assert second_manifest["attributes"]["cache_file_updated"] is False
     assert refreshed_manifest["attributes"]["cache_refresh"] is True
     assert refreshed_manifest["attributes"]["cache_hits"] == 0
     assert refreshed_manifest["attributes"]["cache_misses"] == 2
     assert refreshed_manifest["attributes"]["cache_writes"] == 2
+    assert refreshed_manifest["attributes"]["cache_file_updated"] is False
 
 
 def test_directory_corpus_invalidates_cache_when_extraction_fingerprint_changes(tmp_path):
@@ -742,6 +745,7 @@ def test_directory_corpus_prunes_stale_cache_entries(tmp_path):
 
     assert manifest["attributes"]["cache_hits"] == 1
     assert manifest["attributes"]["cache_pruned"] == 1
+    assert manifest["attributes"]["cache_file_updated"] is True
     assert cached_paths == {"a.md"}
 
 
