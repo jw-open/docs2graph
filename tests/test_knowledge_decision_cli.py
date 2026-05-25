@@ -220,6 +220,53 @@ def test_decision_selects_named_option_not_last_option():
     assert all(e["to"] != option_b["id"] for e in select_edges)
 
 
+def test_decision_consequence_links_to_selected_option_not_last_option():
+    graph = extract_decision_graph(DECISION, source="adr.md")
+    option_a = next(n for n in graph["nodes"] if n["label"] == "Option A: Static extraction")
+    option_b = next(n for n in graph["nodes"] if n["label"] == "Option B: LLM enrichment")
+    decision = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "decision"
+        and n["label"] == "Decision"
+    )
+    consequence = next(n for n in graph["nodes"] if n["label"] == "Consequences")
+    consequence_edges = [e for e in graph["edges"] if e["label"] == "has_consequence"]
+
+    assert any(e["from"] == decision["id"] and e["to"] == consequence["id"] for e in consequence_edges)
+    assert any(e["from"] == option_a["id"] and e["to"] == consequence["id"] for e in consequence_edges)
+    assert all(
+        not (e["from"] == option_b["id"] and e["to"] == consequence["id"])
+        for e in consequence_edges
+    )
+
+
+def test_bullet_consequence_links_to_selected_option_not_last_option():
+    graph = extract_decision_graph(BULLET_DECISION, source="cache-adr.md")
+    option_a = next(n for n in graph["nodes"] if n["label"] == "Option A: always rebuild every file graph.")
+    option_b = next(n for n in graph["nodes"] if n["label"] == "Option B: reuse unchanged per-file graph entries.")
+    decision = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "decision"
+        and n["label"] == "Decision: choose Option B for explicit cache paths only."
+    )
+    consequence = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "consequence"
+        and n["label"] == "Consequence: users must opt in with a cache path."
+    )
+    consequence_edges = [e for e in graph["edges"] if e["label"] == "has_consequence"]
+
+    assert any(e["from"] == decision["id"] and e["to"] == consequence["id"] for e in consequence_edges)
+    assert any(e["from"] == option_b["id"] and e["to"] == consequence["id"] for e in consequence_edges)
+    assert all(
+        not (e["from"] == option_a["id"] and e["to"] == consequence["id"])
+        for e in consequence_edges
+    )
+
+
 def test_extract_decision_graph_from_option_table():
     graph = extract_decision_graph(TABLE_DECISION, source="table-adr.md")
     nodes = graph["nodes"]

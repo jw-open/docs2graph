@@ -20,7 +20,7 @@ _SECTION_TYPES = {
     "cons": ("cons", "drawbacks", "disadvantages"),
     "tradeoff": ("tradeoff", "trade-off", "consideration"),
     "decision": ("decision", "selected", "chosen", "resolution"),
-    "consequence": ("consequence", "impact", "result", "risks"),
+    "consequence": ("consequence", "consequences", "impact", "outcome", "outcomes", "result", "risks"),
     "confidence": ("confidence", "certainty", "confidence level"),
 }
 
@@ -49,6 +49,7 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
     sections = _split_sections(text)
     last_problem_id = None
     current_option_id = None
+    selected_option_id = None
     current_decision_id = None
     option_records: List[Dict[str, str]] = []
 
@@ -80,8 +81,13 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
             selected_option_id = _select_option_id(section["content"], option_records) or current_option_id
             if selected_option_id:
                 _add_edge(edges, seen_edges, section_id, selected_option_id, "selects")
-        elif kind == "consequence" and current_option_id:
-            _add_edge(edges, seen_edges, current_option_id, section_id, "has_consequence")
+        elif kind == "consequence":
+            if current_decision_id:
+                _add_edge(edges, seen_edges, current_decision_id, section_id, "has_consequence")
+            if selected_option_id:
+                _add_edge(edges, seen_edges, selected_option_id, section_id, "has_consequence")
+            elif current_option_id:
+                _add_edge(edges, seen_edges, current_option_id, section_id, "has_consequence")
         elif kind == "confidence" and current_decision_id:
             _add_edge(edges, seen_edges, current_decision_id, section_id, "has_confidence")
 
@@ -104,6 +110,7 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
                 option_records=option_records,
             )
             current_option_id = result.get("current_option_id") or current_option_id
+            selected_option_id = result.get("selected_option_id") or selected_option_id
             current_decision_id = result.get("current_decision_id") or current_decision_id
 
         for bullet_index, bullet in enumerate(_BULLET_RE.findall(section["content"])):
@@ -134,8 +141,13 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
                 selected_option_id = _select_option_id(bullet, option_records) or current_option_id
                 if selected_option_id:
                     _add_edge(edges, seen_edges, bullet_id, selected_option_id, "selects")
-            elif bullet_kind == "consequence" and current_option_id:
-                _add_edge(edges, seen_edges, current_option_id, bullet_id, "has_consequence")
+            elif bullet_kind == "consequence":
+                if current_decision_id:
+                    _add_edge(edges, seen_edges, current_decision_id, bullet_id, "has_consequence")
+                if selected_option_id:
+                    _add_edge(edges, seen_edges, selected_option_id, bullet_id, "has_consequence")
+                elif current_option_id:
+                    _add_edge(edges, seen_edges, current_option_id, bullet_id, "has_consequence")
             elif bullet_kind == "confidence" and current_decision_id:
                 _add_edge(edges, seen_edges, current_decision_id, bullet_id, "has_confidence")
 
@@ -162,14 +174,18 @@ def _split_sections(text: str) -> List[Dict[str, Any]]:
 def _classify(title: str, content: str) -> str:
     title_lower = title.lower()
     for kind, cues in _SECTION_TYPES.items():
-        if any(cue in title_lower for cue in cues):
+        if any(_contains_cue(title_lower, cue) for cue in cues):
             return kind
 
     text = f"{title}\n{content[:300]}".lower()
     for kind, cues in _SECTION_TYPES.items():
-        if any(cue in text for cue in cues):
+        if any(_contains_cue(text, cue) for cue in cues):
             return kind
     return "decision_context"
+
+
+def _contains_cue(text: str, cue: str) -> bool:
+    return re.search(r"(?<![a-z0-9])" + re.escape(cue) + r"(?![a-z0-9])", text) is not None
 
 
 def _classify_bullet(text: str, default: str) -> str:
@@ -287,6 +303,7 @@ def _add_decision_table(
     option_records: List[Dict[str, str]],
 ) -> Dict[str, Optional[str]]:
     option_column = _first_present_column(rows, ("option", "name", "title"))
+    selected_option_id: Optional[str] = None
     for row_index, row in enumerate(rows):
         option_text = row.get(option_column or "", "").strip()
         if not option_text:
@@ -351,6 +368,7 @@ def _add_decision_table(
                 _add_edge(edges, seen_edges, last_problem_id, decision_id, "resolved_by")
             if option_id:
                 _add_edge(edges, seen_edges, decision_id, option_id, "selects")
+                selected_option_id = option_id
             current_decision_id = decision_id
 
         confidence_value = row.get("confidence", "").strip()
@@ -375,6 +393,7 @@ def _add_decision_table(
 
     return {
         "current_option_id": current_option_id,
+        "selected_option_id": selected_option_id,
         "current_decision_id": current_decision_id,
     }
 
