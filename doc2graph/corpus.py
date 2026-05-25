@@ -208,6 +208,10 @@ def build_corpus_graph(
         "type": "corpus_manifest",
         "source": str(root),
         "selected_file_count": len(files),
+        "selected_file_ordering": "relative_path_depth_first",
+        "selected_file_paths_sha256": _paths_sha256(
+            file_path.relative_to(root).as_posix() for file_path in files
+        ),
         "skipped_file_count": scan.skipped_count,
         "skipped_by_reason": dict(sorted(scan.skipped_by_reason.items())),
         "reported_skipped_file_count": len(scan.skipped_samples),
@@ -296,7 +300,7 @@ def build_corpus_graph(
     budget_exhausted = False
     active_cache_keys: set[str] = set()
 
-    for file_path in files:
+    for extraction_order, file_path in enumerate(files):
         rel = file_path.relative_to(root).as_posix()
         parent_id = _ensure_folder_nodes(root, file_path.parent, root_id, nodes, edges, seen_folders)
         file_id = _id("file", rel)
@@ -305,6 +309,7 @@ def build_corpus_graph(
             "type": "file",
             "source": str(file_path),
             "relative_path": rel,
+            "extraction_order": extraction_order,
             "suffix": file_path.suffix.lower(),
             "size_bytes": size,
             "status": "pending",
@@ -1020,6 +1025,14 @@ def _file_sha256(path: Path) -> str:
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _paths_sha256(paths: Iterable[str]) -> str:
+    digest = hashlib.sha256()
+    for path in paths:
+        digest.update(path.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
     return digest.hexdigest()
 
 

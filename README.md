@@ -137,7 +137,8 @@ own `cites` edges, and citation nodes connect to parsed reference entries with
 selection.
 
 Every directory graph includes a `corpus_manifest` node with selected-file
-counts, skipped-file counts, cache hit/miss/write counts when caching is
+counts, a deterministic selected-path ordering contract and SHA-256 digest,
+skipped-file counts, cache hit/miss/write counts when caching is
 enabled, the content-digest and extraction fingerprint validation used for
 cache entries,
 stale cache entries pruned for the current root and graph type,
@@ -157,7 +158,10 @@ Selected `file` nodes also carry deterministic audit metadata. Successful files
 are marked with `status: extracted`, files skipped by byte limits are marked
 with `status: skipped` plus a `skip_reason`, and files that fail to load are
 marked with `status: failed`, `error_type`, and `error_message` while the run
-continues. When explicit caching is enabled, each file records whether its graph
+continues. Each selected file records its zero-based `extraction_order`, making
+large corpus traversal reproducible and easy to compare against the manifest's
+`selected_file_paths_sha256` without materializing a full path list in metadata.
+When explicit caching is enabled, each file records whether its graph
 came from a cache `hit`, cache `miss`, cache `refresh`, caching was `disabled`,
 or extraction was skipped before the cache was `not_attempted`.
 

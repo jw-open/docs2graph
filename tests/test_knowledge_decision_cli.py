@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 
@@ -397,6 +398,35 @@ def test_directory_corpus_reports_skipped_files_and_manifest(tmp_path):
     }
     assert manifest["attributes"]["max_files_reached"] is True
     assert {n["attributes"]["reason"] for n in skipped} == {"max_files_exceeded", "unsupported_extension"}
+
+
+def test_directory_corpus_records_deterministic_selected_path_digest_and_order(tmp_path):
+    docs = tmp_path / "docs"
+    alpha = docs / "alpha"
+    beta = docs / "beta"
+    alpha.mkdir(parents=True)
+    beta.mkdir()
+    (docs / "root.md").write_text("# Root\n\nRoot document.", encoding="utf-8")
+    (alpha / "z.md").write_text("# Zed\n\nNested alpha document.", encoding="utf-8")
+    (beta / "a.md").write_text("# Aye\n\nNested beta document.", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge")
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_attrs = [
+        n["attributes"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    selected_paths = [attrs["relative_path"] for attrs in file_attrs]
+    digest = hashlib.sha256()
+    for path in selected_paths:
+        digest.update(path.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+
+    assert selected_paths == ["alpha/z.md", "beta/a.md", "root.md"]
+    assert [attrs["extraction_order"] for attrs in file_attrs] == [0, 1, 2]
+    assert manifest["attributes"]["selected_file_ordering"] == "relative_path_depth_first"
+    assert manifest["attributes"]["selected_file_paths_sha256"] == digest.hexdigest()
 
 
 def test_directory_corpus_reports_supported_files_outside_include(tmp_path):
