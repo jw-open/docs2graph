@@ -301,16 +301,26 @@ def test_directory_corpus_skips_large_files(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "small.md").write_text("# Small\n\nThis document describes something.", encoding="utf-8")
-    (docs / "large.md").write_text("x" * 20, encoding="utf-8")
+    (docs / "large.md").write_text("x" * 100, encoding="utf-8")
+    max_file_bytes = (docs / "small.md").stat().st_size
 
     graph = build_corpus_graph(
         str(docs),
         graph_type="knowledge",
-        max_file_bytes=10,
+        max_file_bytes=max_file_bytes,
     )
     node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
+    file_statuses = {
+        n["attributes"]["relative_path"]: n["attributes"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    }
 
     assert "skipped_file" in node_types
+    assert file_statuses["small.md"]["status"] == "extracted"
+    assert file_statuses["small.md"]["cache_status"] == "disabled"
+    assert file_statuses["large.md"]["status"] == "skipped"
+    assert file_statuses["large.md"]["skip_reason"] == "file_too_large"
 
 
 def test_directory_corpus_reports_skipped_files_and_manifest(tmp_path):
@@ -821,6 +831,55 @@ def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
     assert refreshed_manifest["attributes"]["cache_misses"] == 2
     assert refreshed_manifest["attributes"]["cache_writes"] == 2
     assert refreshed_manifest["attributes"]["cache_file_updated"] is False
+    assert {
+        n["attributes"]["relative_path"]: n["attributes"]["cache_status"]
+        for n in second["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    } == {"a.md": "hit", "b.md": "hit"}
+    assert {
+        n["attributes"]["relative_path"]: n["attributes"]["cache_status"]
+        for n in refreshed["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    } == {"a.md": "refresh", "b.md": "refresh"}
+
+
+def test_directory_corpus_marks_failed_file_status_and_manifest(tmp_path, monkeypatch):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    good = docs / "good.md"
+    bad = docs / "bad.md"
+    good.write_text("# Good\n\nExtractable document.", encoding="utf-8")
+    bad.write_text("# Bad\n\nBroken document.", encoding="utf-8")
+
+    from doc2graph import cli
+
+    original_build_file_graph = cli.build_file_graph
+
+    def fail_bad_file(path, graph_type="knowledge"):
+        if path == str(bad):
+            raise RuntimeError("boom")
+        return original_build_file_graph(path, graph_type)
+
+    monkeypatch.setattr(cli, "build_file_graph", fail_bad_file)
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", skip_report_limit=10)
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_attrs = {
+        n["attributes"]["relative_path"]: n["attributes"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    }
+    error = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "load_error")
+
+    assert manifest["attributes"]["extracted_file_count"] == 1
+    assert manifest["attributes"]["failed_file_count"] == 1
+    assert manifest["attributes"]["skipped_by_reason"] == {"load_error": 1}
+    assert file_attrs["good.md"]["status"] == "extracted"
+    assert file_attrs["bad.md"]["status"] == "failed"
+    assert file_attrs["bad.md"]["error_type"] == "RuntimeError"
+    assert file_attrs["bad.md"]["error_message"] == "boom"
+    assert error["attributes"]["suffix"] == ".md"
+    assert error["attributes"]["size_bytes"] == bad.stat().st_size
 
 
 def test_directory_corpus_invalidates_cache_when_extraction_fingerprint_changes(tmp_path):

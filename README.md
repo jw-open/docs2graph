@@ -142,7 +142,7 @@ stale cache entries pruned for the current root and graph type,
 whether the cache file was actually updated,
 the number of deterministic cross-document mention links added,
 active include/exclude patterns, extracted-file byte counts, scan budget state,
-and skip reasons
+failed-file counts, and skip reasons
 such as unsupported extensions, include-filter mismatches, max-file limits,
 cumulative byte limits, oversized files,
 depth-pruned directories, default ignored generated paths, user excluded paths,
@@ -150,6 +150,14 @@ non-recursive skipped directories, symlinked directories, inaccessible paths, an
 reserved cache/output files, and per-file extraction errors. This
 keeps large mixed-folder runs deterministic and auditable without requiring all
 omitted paths to be materialized as graph nodes.
+
+Selected `file` nodes also carry deterministic audit metadata. Successful files
+are marked with `status: extracted`, files skipped by byte limits are marked
+with `status: skipped` plus a `skip_reason`, and files that fail to load are
+marked with `status: failed`, `error_type`, and `error_message` while the run
+continues. When explicit caching is enabled, each file records whether its graph
+came from a cache `hit`, cache `miss`, cache `refresh`, caching was `disabled`,
+or extraction was skipped before the cache was `not_attempted`.
 
 Document-local node IDs are scoped by source during file and corpus extraction,
 so common headings such as `# Abstract`, `# Summary`, or `# Decision` remain

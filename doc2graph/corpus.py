@@ -284,6 +284,7 @@ def build_corpus_graph(
     runtime_skipped_by_reason: Dict[str, int] = {}
     runtime_reported_skips = 0
     extracted_file_count = 0
+    failed_file_count = 0
     extracted_total_bytes = 0
     total_report_limit = max(0, skip_report_limit)
     budget_exhausted = False
@@ -300,12 +301,16 @@ def build_corpus_graph(
             "relative_path": rel,
             "suffix": file_path.suffix.lower(),
             "size_bytes": size,
+            "status": "pending",
+            "cache_status": "not_attempted",
             "extraction_method": "static",
         }
         nodes.append(make_node(file_id, file_path.name, attributes=attrs))
         edges.append(make_edge(parent_id, file_id, "contains"))
 
         if budget_exhausted:
+            attrs["status"] = "skipped"
+            attrs["skip_reason"] = "max_total_bytes_exceeded"
             runtime_reported_skips += _add_runtime_skip(
                 nodes,
                 edges,
@@ -325,6 +330,8 @@ def build_corpus_graph(
             continue
 
         if max_file_bytes is not None and size is not None and size > max_file_bytes:
+            attrs["status"] = "skipped"
+            attrs["skip_reason"] = "file_too_large"
             runtime_reported_skips += _add_runtime_skip(
                 nodes,
                 edges,
@@ -345,6 +352,8 @@ def build_corpus_graph(
             and extracted_total_bytes + size > max_total_bytes
         ):
             budget_exhausted = True
+            attrs["status"] = "skipped"
+            attrs["skip_reason"] = "max_total_bytes_exceeded"
             runtime_reported_skips += _add_runtime_skip(
                 nodes,
                 edges,
@@ -376,10 +385,14 @@ def build_corpus_graph(
                 ):
                     graph = cached.get("graph")
                     cache_stats["hits"] += 1
+                    attrs["cache_status"] = "hit"
 
             if graph is None:
                 if cache_path is not None:
                     cache_stats["misses"] += 1
+                    attrs["cache_status"] = "refresh" if refresh_cache else "miss"
+                else:
+                    attrs["cache_status"] = "disabled"
                 graph = build_file_graph(str(file_path), graph_type)
                 if cache_path is not None:
                     cache.setdefault("entries", {})[cache_key] = {
@@ -389,6 +402,9 @@ def build_corpus_graph(
                     cache_stats["writes"] += 1
             active_cache_keys.add(cache_key)
         except Exception as exc:  # keep batch extraction useful on mixed corpora
+            attrs["status"] = "failed"
+            attrs["error_type"] = type(exc).__name__
+            attrs["error_message"] = str(exc)
             _count_skip(runtime_skipped_by_reason, "load_error")
             if len(scan.skipped_samples) + runtime_reported_skips < total_report_limit:
                 error_id = _id("load_error", f"{rel}:{type(exc).__name__}:{exc}")
@@ -401,6 +417,8 @@ def build_corpus_graph(
                             "type": "load_error",
                             "source": str(file_path),
                             "relative_path": rel,
+                            "suffix": file_path.suffix.lower(),
+                            "size_bytes": size,
                             "error_type": type(exc).__name__,
                             "extraction_method": "static",
                         },
@@ -408,12 +426,14 @@ def build_corpus_graph(
                 )
                 edges.append(make_edge(file_id, error_id, "failed_to_extract"))
                 runtime_reported_skips += 1
+            failed_file_count += 1
             continue
 
         graph_root = graph.get("current_node_id")
         if graph_root:
             edges.append(make_edge(file_id, graph_root, "extracted_as"))
         graph_parts.append(graph)
+        attrs["status"] = "extracted"
         extracted_file_count += 1
         if size is not None:
             extracted_total_bytes += size
@@ -432,6 +452,7 @@ def build_corpus_graph(
         scan.skipped_by_reason.get("max_total_bytes_exceeded", 0) > 0
     )
     manifest_attrs["extracted_file_count"] = extracted_file_count
+    manifest_attrs["failed_file_count"] = failed_file_count
     manifest_attrs["extracted_total_bytes"] = extracted_total_bytes
     manifest_attrs["cache_hits"] = cache_stats["hits"]
     manifest_attrs["cache_misses"] = cache_stats["misses"]
@@ -439,6 +460,7 @@ def build_corpus_graph(
     nodes[0]["attributes"]["skipped_file_count"] = scan.skipped_count
     nodes[0]["attributes"]["skipped_file_count_is_complete"] = not scan.scan_truncated
     nodes[0]["attributes"]["extracted_file_count"] = extracted_file_count
+    nodes[0]["attributes"]["failed_file_count"] = failed_file_count
     nodes[0]["attributes"]["extracted_total_bytes"] = extracted_total_bytes
     if cache_path is not None:
         cache_stats["pruned"] = _prune_cache(cache, root, graph_type, active_cache_keys)
