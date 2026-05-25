@@ -1140,6 +1140,29 @@ def test_directory_corpus_reports_invalid_cache_schema_and_rebuilds(tmp_path):
     assert len(payload["entries"]) == 1
 
 
+def test_directory_corpus_reports_cache_write_error_without_failing(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    blocker = tmp_path / "not-a-directory"
+    cache = blocker / "doc2graph-cache.json"
+    blocker.write_text("blocks cache directory creation", encoding="utf-8")
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_attrs = next(n["attributes"] for n in graph["nodes"] if n.get("attributes", {}).get("type") == "file")
+
+    assert manifest["attributes"]["extracted_file_count"] == 1
+    assert manifest["attributes"]["cache_load_status"] == "missing"
+    assert manifest["attributes"]["cache_entry_count_after"] == 1
+    assert manifest["attributes"]["cache_file_updated"] is False
+    assert manifest["attributes"]["cache_write_status"] == "write_error"
+    assert manifest["attributes"]["cache_write_error"]
+    assert file_attrs["status"] == "extracted"
+    assert file_attrs["cache_status"] == "miss"
+
+
 def test_directory_corpus_marks_failed_file_status_and_manifest(tmp_path, monkeypatch):
     docs = tmp_path / "docs"
     docs.mkdir()

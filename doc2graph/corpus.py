@@ -212,6 +212,8 @@ def build_corpus_graph(
         "writes": 0,
         "pruned": 0,
         "refresh": refresh_cache,
+        "write_status": None,
+        "write_error": None,
     }
 
     root_id = _id("corpus", str(root.resolve()))
@@ -274,6 +276,8 @@ def build_corpus_graph(
         "cache_writes": cache_stats["writes"],
         "cache_pruned": cache_stats["pruned"],
         "cache_file_updated": False,
+        "cache_write_status": None,
+        "cache_write_error": None,
         "cache_refresh": cache_stats["refresh"],
         "cross_document_link_count": 0,
     }
@@ -525,7 +529,12 @@ def build_corpus_graph(
         manifest_attrs["cache_pruned"] = cache_stats["pruned"]
         cache_stats["entry_count_after"] = _cache_entry_count(cache)
         manifest_attrs["cache_entry_count_after"] = cache_stats["entry_count_after"]
-        manifest_attrs["cache_file_updated"] = _write_cache(cache_path, cache)
+        cache_write = _write_cache_with_status(cache_path, cache)
+        cache_stats["write_status"] = cache_write.status
+        cache_stats["write_error"] = cache_write.error_message
+        manifest_attrs["cache_file_updated"] = cache_write.updated
+        manifest_attrs["cache_write_status"] = cache_write.status
+        manifest_attrs["cache_write_error"] = cache_write.error_message
     merged = _merge_graphs([corpus_graph, *graph_parts])
     cross_document_link_count = _add_corpus_cross_document_links(merged)
     manifest_attrs["cross_document_link_count"] = cross_document_link_count
@@ -558,6 +567,13 @@ class CacheLoad:
     cache: Dict[str, Any]
     status: str
     entry_count: int
+
+
+@dataclass(frozen=True)
+class CacheWrite:
+    updated: bool
+    status: str
+    error_message: str | None = None
 
 
 def scan_document_files(
@@ -1149,18 +1165,28 @@ def _cache_entry_count(cache: Dict[str, Any]) -> int:
 
 
 def _write_cache(cache_path: str | Path, cache: Dict[str, Any]) -> bool:
+    result = _write_cache_with_status(cache_path, cache)
+    if result.status == "write_error":
+        raise OSError(result.error_message or "cache write failed")
+    return result.updated
+
+
+def _write_cache_with_status(cache_path: str | Path, cache: Dict[str, Any]) -> CacheWrite:
     path = Path(cache_path)
     payload = _serialize_cache(cache)
     try:
         if path.exists() and path.read_text(encoding="utf-8") == payload:
-            return False
+            return CacheWrite(updated=False, status="unchanged")
     except OSError:
         pass
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(f"{path.name}.tmp")
-    temp.write_text(payload, encoding="utf-8")
-    temp.replace(path)
-    return True
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_name(f"{path.name}.tmp")
+        temp.write_text(payload, encoding="utf-8")
+        temp.replace(path)
+    except OSError as exc:
+        return CacheWrite(updated=False, status="write_error", error_message=str(exc))
+    return CacheWrite(updated=True, status="updated")
 
 
 def _serialize_cache(cache: Dict[str, Any]) -> str:

@@ -138,7 +138,10 @@ Large corpora are handled by deterministic limits:
   `invalid_json`, `invalid_schema`, or `read_error`) plus
   `cache_entry_count_before` and `cache_entry_count_after`, so invalid cache
   files are visible instead of being silently indistinguishable from an empty
-  first run.
+  first run. Cache writes are best-effort: if the graph extraction succeeds
+  but the cache path cannot be written, the run still returns the graph and
+  reports `cache_write_status: write_error` plus `cache_write_error` in the
+  manifest.
 - `--output PATH`: when the output file already exists inside the scanned
   corpus directory, doc2graph reserves it too, even if it has a supported
   document extension such as `.md` or `.txt`.
@@ -165,6 +168,7 @@ cache entries,
 the cache load status and before/after cache entry counts,
 stale cache entries pruned for the current root and graph type,
 whether the cache file was actually updated,
+cache write status and write errors when an explicit cache path cannot be updated,
 the number of deterministic cross-document mention links added,
 active include/exclude patterns, extracted-file byte counts, scan budget state,
 whether a max-files limit intentionally truncated traversal,
