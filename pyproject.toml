@@ -42,6 +42,8 @@ Repository = "https://github.com/jw-open/doc2graph"
 
 [project.scripts]
 doc2graph = "doc2graph.cli:main"
+doc2graph-iterate = "doc2graph.iterate:main"
+doc2graph-loop = "doc2graph.loop:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
