@@ -50,7 +50,7 @@ doc2graph ./docs --graph all --output docs-corpus.graph.json
 ```
 
 - `knowledge`: document, section, concept, claim, evidence, citation, and URL nodes.
-- `decision`: problem, context, option, pros, cons, tradeoff, decision, and consequence nodes.
+- `decision`: problem, context, option, pros, cons, tradeoff, decision, consequence, and confidence nodes.
 - `schema`: table/entity graphs from schema docs and data dictionaries.
 - `media`: image/chart metadata, OCR text, and chart signal nodes.
 - `all`: merged graph from the supported document extractors.

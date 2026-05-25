@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..types import GraphDict, make_edge, make_node
 
@@ -19,6 +19,7 @@ _SECTION_TYPES = {
     "tradeoff": ("tradeoff", "trade-off", "consideration"),
     "decision": ("decision", "selected", "chosen", "resolution"),
     "consequence": ("consequence", "impact", "result", "risks"),
+    "confidence": ("confidence", "certainty", "confidence level"),
 }
 
 
@@ -46,6 +47,8 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
     sections = _split_sections(text)
     last_problem_id = None
     current_option_id = None
+    current_decision_id = None
+    option_records: List[Dict[str, str]] = []
 
     for index, section in enumerate(sections):
         kind = _classify(section["title"], section["content"])
@@ -62,17 +65,22 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
             last_problem_id = section_id
         elif kind == "option":
             current_option_id = section_id
+            option_records.append({"id": section_id, "title": section["title"], "content": section["content"]})
             if last_problem_id:
                 _add_edge(edges, seen_edges, last_problem_id, section_id, "has_option")
         elif kind in {"pros", "cons", "tradeoff"} and current_option_id:
             _add_edge(edges, seen_edges, current_option_id, section_id, kind)
         elif kind == "decision":
+            current_decision_id = section_id
             if last_problem_id:
                 _add_edge(edges, seen_edges, last_problem_id, section_id, "resolved_by")
-            if current_option_id:
-                _add_edge(edges, seen_edges, section_id, current_option_id, "selects")
+            selected_option_id = _select_option_id(section["content"], option_records) or current_option_id
+            if selected_option_id:
+                _add_edge(edges, seen_edges, section_id, selected_option_id, "selects")
         elif kind == "consequence" and current_option_id:
             _add_edge(edges, seen_edges, current_option_id, section_id, "has_consequence")
+        elif kind == "confidence" and current_decision_id:
+            _add_edge(edges, seen_edges, current_decision_id, section_id, "has_confidence")
 
         for bullet_index, bullet in enumerate(_BULLET_RE.findall(section["content"])):
             bullet_kind = _classify_bullet(bullet, default=kind)
@@ -84,8 +92,27 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
                 "extraction_method": "static",
             })
             _add_edge(edges, seen_edges, section_id, bullet_id, "contains")
-            if bullet_kind in {"pros", "cons", "tradeoff"} and current_option_id:
+
+            if bullet_kind == "problem":
+                last_problem_id = bullet_id
+            elif bullet_kind == "option":
+                current_option_id = bullet_id
+                option_records.append({"id": bullet_id, "title": bullet, "content": bullet})
+                if last_problem_id:
+                    _add_edge(edges, seen_edges, last_problem_id, bullet_id, "has_option")
+            elif bullet_kind in {"pros", "cons", "tradeoff"} and current_option_id:
                 _add_edge(edges, seen_edges, current_option_id, bullet_id, bullet_kind)
+            elif bullet_kind == "decision":
+                current_decision_id = bullet_id
+                if last_problem_id:
+                    _add_edge(edges, seen_edges, last_problem_id, bullet_id, "resolved_by")
+                selected_option_id = _select_option_id(bullet, option_records) or current_option_id
+                if selected_option_id:
+                    _add_edge(edges, seen_edges, bullet_id, selected_option_id, "selects")
+            elif bullet_kind == "consequence" and current_option_id:
+                _add_edge(edges, seen_edges, current_option_id, bullet_id, "has_consequence")
+            elif bullet_kind == "confidence" and current_decision_id:
+                _add_edge(edges, seen_edges, current_decision_id, bullet_id, "has_confidence")
 
     return {"nodes": nodes, "edges": edges, "current_node_id": root_id}
 
@@ -122,15 +149,52 @@ def _classify(title: str, content: str) -> str:
 
 def _classify_bullet(text: str, default: str) -> str:
     lower = text.lower()
+    if lower.startswith(("problem:", "challenge:", "issue:", "motivation:")):
+        return "problem"
+    if lower.startswith(("option:", "alternative:", "approach:", "solution:")):
+        return "option"
+    if re.match(r"^(?:option|alternative|approach|solution)\s+[a-z0-9]+[:.)-]", lower):
+        return "option"
     if lower.startswith(("pro:", "benefit:", "advantage:")):
         return "pros"
     if lower.startswith(("con:", "drawback:", "risk:", "cost:")):
         return "cons"
     if "tradeoff" in lower or "trade-off" in lower or "but " in lower:
         return "tradeoff"
-    if lower.startswith(("decide", "decision:", "choose", "chosen")):
+    if lower.startswith(("decide", "decision:", "choose", "chosen", "selected:", "status: accepted")):
         return "decision"
+    if lower.startswith(("consequence:", "impact:", "result:", "risk:")):
+        return "consequence"
+    if lower.startswith(("confidence:", "certainty:", "confidence level:")):
+        return "confidence"
     return default
+
+
+def _select_option_id(text: str, option_records: List[Dict[str, str]]) -> Optional[str]:
+    decision_text = _normalize_option_text(text)
+    best_id = None
+    best_score = 0
+    for option in option_records:
+        option_text = _normalize_option_text(f"{option['title']} {option['content']}")
+        if not option_text:
+            continue
+        option_terms = [term for term in option_text.split() if len(term) > 2]
+        if not option_terms:
+            continue
+        score = sum(1 for term in set(option_terms) if term in decision_text)
+        if option_text in decision_text:
+            score += len(option_terms)
+        if score > best_score:
+            best_id = option["id"]
+            best_score = score
+    return best_id if best_score > 0 else None
+
+
+def _normalize_option_text(text: str) -> str:
+    lowered = text.lower()
+    lowered = re.sub(r"\b(?:option|alternative|approach|solution)\s+[a-z0-9]+[:.)-]?", " ", lowered)
+    lowered = re.sub(r"\b(?:option|alternative|approach|solution|selected|chosen|choose|decision)\b[:.)-]?", " ", lowered)
+    return re.sub(r"[^a-z0-9]+", " ", lowered).strip()
 
 
 def _label(text: str, limit: int = 96) -> str:

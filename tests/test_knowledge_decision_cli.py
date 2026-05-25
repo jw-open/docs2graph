@@ -47,6 +47,20 @@ Users can run locally, but inferred reasoning should be labeled separately.
 """
 
 
+BULLET_DECISION = """# ADR: Cache repeated corpus extraction
+
+- Problem: repeated scans of large folders waste time.
+- Option A: always rebuild every file graph.
+- Option B: reuse unchanged per-file graph entries.
+- Pro: faster repeated local runs.
+- Con: cache files can become stale if metadata is incomplete.
+- Tradeoff: cache reads add complexity but keep default output deterministic.
+- Decision: choose Option B for explicit cache paths only.
+- Consequence: users must opt in with a cache path.
+- Confidence: medium, based on deterministic file metadata.
+"""
+
+
 def test_extract_knowledge_graph_for_paper_signals():
     graph = extract_knowledge_graph(PAPER, source="paper.md")
     node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
@@ -73,6 +87,25 @@ def test_extract_decision_graph_roles_and_edges():
     assert "decision" in node_types
     assert "has_option" in labels
     assert "resolved_by" in labels
+
+
+def test_extract_decision_graph_from_bullet_only_adr():
+    graph = extract_decision_graph(BULLET_DECISION, source="cache-adr.md")
+    node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
+    labels = {e["label"] for e in graph["edges"]}
+
+    assert {"problem", "option", "pros", "cons", "tradeoff", "decision", "consequence", "confidence"} <= node_types
+    assert {"has_option", "resolved_by", "selects", "has_consequence", "has_confidence"} <= labels
+
+
+def test_decision_selects_named_option_not_last_option():
+    graph = extract_decision_graph(DECISION, source="adr.md")
+    option_a = next(n for n in graph["nodes"] if n["label"] == "Option A: Static extraction")
+    option_b = next(n for n in graph["nodes"] if n["label"] == "Option B: LLM enrichment")
+    select_edges = [e for e in graph["edges"] if e["label"] == "selects"]
+
+    assert any(e["to"] == option_a["id"] for e in select_edges)
+    assert all(e["to"] != option_b["id"] for e in select_edges)
 
 
 def test_build_graph_and_document_graph_from_document(tmp_path):
