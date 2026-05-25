@@ -112,10 +112,11 @@ Large corpora are handled by deterministic limits:
   scanned corpus directory, doc2graph reserves it as an output artifact and
   does not extract it as a source document. Cache entries are also tied to a
   deterministic fingerprint of the loader and extractor code that can affect
-  per-file graph output, so stale entries are rebuilt after doc2graph changes.
-  Warm-cache runs leave the cache file untouched when its deterministic JSON
-  payload would not change, and the manifest reports this as
-  `cache_file_updated: false`.
+  per-file graph output and a SHA-256 digest of the source file content, so
+  stale entries are rebuilt after doc2graph changes or file edits even when
+  size and mtime metadata are unchanged. Warm-cache runs leave the cache file
+  untouched when its deterministic JSON payload would not change, and the
+  manifest reports this as `cache_file_updated: false`.
 - `--output PATH`: when the output file already exists inside the scanned
   corpus directory, doc2graph reserves it too, even if it has a supported
   document extension such as `.md` or `.txt`.
@@ -130,7 +131,8 @@ selection.
 
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, skipped-file counts, cache hit/miss/write counts when caching is
-enabled, the extraction fingerprint used to validate cache entries,
+enabled, the content-digest and extraction fingerprint validation used for
+cache entries,
 stale cache entries pruned for the current root and graph type,
 whether the cache file was actually updated,
 active include/exclude patterns, extracted-file byte counts, scan budget state,

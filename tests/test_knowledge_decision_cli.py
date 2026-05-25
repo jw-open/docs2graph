@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -721,6 +722,45 @@ def test_directory_corpus_invalidates_cache_when_extraction_fingerprint_changes(
     assert refreshed_entry["metadata"]["extraction_fingerprint"] == second_manifest["attributes"][
         "cache_extraction_fingerprint"
     ]
+
+
+def test_directory_corpus_cache_uses_content_digest_not_only_stat_metadata(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    source = docs / "a.md"
+    original = "# A\n\nThis document describes Alpha graph cache."
+    updated = "# A\n\nThis document describes Bravo graph cache."
+    assert len(original.encode("utf-8")) == len(updated.encode("utf-8"))
+    source.write_text(original, encoding="utf-8")
+
+    first = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    original_stat = source.stat()
+    source.write_text(updated, encoding="utf-8")
+    os.utime(source, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    second = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    first_manifest = next(
+        n for n in first["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest"
+    )
+    second_manifest = next(
+        n for n in second["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest"
+    )
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    refreshed_entry = next(iter(payload["entries"].values()))
+    section = next(
+        n
+        for n in second["nodes"]
+        if n.get("attributes", {}).get("type") == "section"
+        and n.get("attributes", {}).get("source") == str(source)
+    )
+
+    assert first_manifest["attributes"]["cache_validation"] == "content_sha256"
+    assert second_manifest["attributes"]["cache_hits"] == 0
+    assert second_manifest["attributes"]["cache_misses"] == 1
+    assert second_manifest["attributes"]["cache_writes"] == 1
+    assert refreshed_entry["metadata"]["content_sha256"]
+    assert "Bravo graph cache" in section["content"]
 
 
 def test_directory_corpus_prunes_stale_cache_entries(tmp_path):

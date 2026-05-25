@@ -173,6 +173,7 @@ def build_corpus_graph(
         "extraction_method": "static",
         "cache_enabled": cache_stats["enabled"],
         "cache_path": cache_stats["path"],
+        "cache_validation": "content_sha256" if cache_stats["enabled"] else None,
         "cache_extraction_fingerprint": _extraction_fingerprint(graph_type)
         if cache_stats["enabled"]
         else None,
@@ -772,8 +773,17 @@ def _file_metadata(root: Path, path: Path, graph_type: str) -> Dict[str, Any]:
         "extraction_fingerprint": _extraction_fingerprint(graph_type),
         "size_bytes": stat.st_size,
         "mtime_ns": stat.st_mtime_ns,
+        "content_sha256": _file_sha256(path),
         "suffix": path.suffix.lower(),
     }
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 @lru_cache(maxsize=None)
