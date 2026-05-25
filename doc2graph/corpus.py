@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
+from urllib.parse import unquote, urlsplit
 
 from .types import make_edge, make_node
 from .loaders.code import CODE_SUFFIXES
@@ -71,6 +72,12 @@ _CORPUS_LINK_TARGET_TYPES = {
     "confidence",
     "definition",
     "table",
+}
+
+_CORPUS_FILE_REFERENCE_SOURCE_TYPES = _CORPUS_LINK_SOURCE_TYPES - {
+    "document",
+    "decision_document",
+    "media_document",
 }
 
 _GENERIC_CROSS_DOC_ALIASES = {
@@ -165,6 +172,7 @@ def build_corpus_graph(
     cache_path: str | Path | None = None,
     output_path: str | Path | None = None,
     refresh_cache: bool = False,
+    max_file_reference_links: int | None = None,
     max_cross_document_links: int | None = None,
 ) -> Dict[str, Any]:
     """Build one graph from a file, URL, or directory corpus."""
@@ -182,6 +190,8 @@ def build_corpus_graph(
 
     if max_cross_document_links is not None and max_cross_document_links < 0:
         max_cross_document_links = None
+    if max_file_reference_links is not None and max_file_reference_links < 0:
+        max_file_reference_links = None
 
     reserved_paths = [
         _resolved_path(reserved)
@@ -295,6 +305,9 @@ def build_corpus_graph(
         "cache_write_status": None,
         "cache_write_error": None,
         "cache_refresh": cache_stats["refresh"],
+        "max_file_reference_links": max_file_reference_links,
+        "file_reference_link_count": 0,
+        "file_reference_link_limit_reached": False,
         "max_cross_document_links": max_cross_document_links,
         "cross_document_link_count": 0,
         "cross_document_link_limit_reached": False,
@@ -603,6 +616,20 @@ def build_corpus_graph(
         manifest_attrs["cache_write_status"] = cache_write.status
         manifest_attrs["cache_write_error"] = cache_write.error_message
     merged = _merge_graphs([corpus_graph, *graph_parts])
+    file_reference_links = _add_corpus_file_reference_links(
+        merged,
+        root=root,
+        selected_files=files,
+        max_links=max_file_reference_links,
+    )
+    manifest_attrs["file_reference_link_count"] = file_reference_links.added
+    manifest_attrs["file_reference_link_limit_reached"] = (
+        file_reference_links.limit_reached
+    )
+    nodes[0]["attributes"]["file_reference_link_count"] = file_reference_links.added
+    nodes[0]["attributes"]["file_reference_link_limit_reached"] = (
+        file_reference_links.limit_reached
+    )
     cross_document_links = _add_corpus_cross_document_links(
         merged,
         max_links=max_cross_document_links,
@@ -952,6 +979,108 @@ def _ensure_folder_nodes(
             seen.add(folder_id)
         parent_id = folder_id
     return parent_id
+
+
+_MARKDOWN_LINK_TARGET_RE = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+_HTML_LINK_TARGET_RE = re.compile(
+    r"""(?:href|src)\s*=\s*["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+_WIKI_LINK_TARGET_RE = re.compile(r"\[\[([^\]#|]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
+
+
+def _add_corpus_file_reference_links(
+    graph: Dict[str, Any],
+    *,
+    root: Path,
+    selected_files: Sequence[Path],
+    max_links: int | None = None,
+) -> CrossDocumentLinkResult:
+    """Add edges for explicit relative links between selected corpus files."""
+    nodes = graph.get("nodes", [])
+    edges = graph.setdefault("edges", [])
+    existing_edges = {
+        (edge.get("from"), edge.get("to"), edge.get("label"))
+        for edge in edges
+    }
+    target_file_ids = {
+        path.relative_to(root).as_posix(): _id("file", path.relative_to(root).as_posix())
+        for path in selected_files
+    }
+    added = 0
+
+    for source_node in nodes:
+        source_id = source_node.get("id")
+        attrs = source_node.get("attributes") or {}
+        source_path_value = attrs.get("source")
+        content = source_node.get("content") or ""
+        if not source_id or not source_path_value or not content:
+            continue
+        source_path = Path(str(source_path_value))
+        try:
+            source_rel = source_path.relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if source_rel not in target_file_ids:
+            continue
+        source_parent = Path(source_rel).parent
+        source_type = attrs.get("type")
+        if source_type not in _CORPUS_FILE_REFERENCE_SOURCE_TYPES:
+            continue
+
+        for target in _extract_relative_link_targets(content):
+            target_rel = _resolve_relative_link_target(source_parent, target)
+            if target_rel is None or target_rel == source_rel:
+                continue
+            target_id = target_file_ids.get(target_rel)
+            if target_id is None:
+                continue
+            edge_key = (source_id, target_id, "links_to")
+            if edge_key in existing_edges:
+                continue
+            if max_links is not None and added >= max_links:
+                return CrossDocumentLinkResult(added=added, limit_reached=True)
+            edges.append(make_edge(source_id, target_id, "links_to"))
+            existing_edges.add(edge_key)
+            added += 1
+
+    return CrossDocumentLinkResult(added=added)
+
+
+def _extract_relative_link_targets(content: str) -> List[str]:
+    targets: List[str] = []
+    for pattern in (_MARKDOWN_LINK_TARGET_RE, _HTML_LINK_TARGET_RE, _WIKI_LINK_TARGET_RE):
+        for match in pattern.finditer(content):
+            target = match.group(1).strip()
+            if target:
+                targets.append(target)
+    return targets
+
+
+def _resolve_relative_link_target(source_parent: Path, target: str) -> str | None:
+    parsed = urlsplit(target)
+    if parsed.scheme or parsed.netloc:
+        return None
+    raw_path = unquote(parsed.path).strip()
+    if not raw_path or raw_path.startswith("#") or raw_path.startswith("/"):
+        return None
+    rel = Path(source_parent, raw_path)
+    normalized_parts: List[str] = []
+    for part in rel.parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if not normalized_parts:
+                return None
+            normalized_parts.pop()
+            continue
+        normalized_parts.append(part)
+    if not normalized_parts:
+        return None
+    normalized = Path(*normalized_parts).as_posix()
+    if Path(normalized).suffix.lower() not in SUPPORTED_SUFFIXES:
+        return None
+    return normalized
 
 
 def _add_corpus_cross_document_links(

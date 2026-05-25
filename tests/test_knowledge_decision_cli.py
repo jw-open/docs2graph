@@ -993,6 +993,69 @@ def test_cli_accepts_max_cross_document_links(tmp_path):
     assert manifest["attributes"]["cross_document_link_limit_reached"] is True
 
 
+def test_directory_corpus_links_explicit_relative_file_references(tmp_path):
+    docs = tmp_path / "docs"
+    adr = docs / "adr"
+    adr.mkdir(parents=True)
+    (docs / "index.md").write_text(
+        "# Index\n\nRead the [cache ADR](adr/cache.md) before rollout.",
+        encoding="utf-8",
+    )
+    (adr / "cache.md").write_text("# Cache ADR\n\nUse explicit caching.", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge")
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    index_section = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "section"
+        and n.get("attributes", {}).get("source") == str(docs / "index.md")
+    )
+    target_file = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+        and n.get("attributes", {}).get("relative_path") == "adr/cache.md"
+    )
+
+    assert manifest["attributes"]["file_reference_link_count"] == 1
+    assert manifest["attributes"]["file_reference_link_limit_reached"] is False
+    assert any(
+        e["from"] == index_section["id"]
+        and e["to"] == target_file["id"]
+        and e["label"] == "links_to"
+        for e in graph["edges"]
+    )
+
+
+def test_cli_accepts_max_file_reference_links(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    output = tmp_path / "graph.json"
+    (docs / "a.md").write_text("# A\n\nSee [B](b.md).", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    exit_code = main(
+        [
+            str(docs),
+            "--graph",
+            "knowledge",
+            "--max-file-reference-links",
+            "0",
+            "--output",
+            str(output),
+        ]
+    )
+
+    graph = json.loads(output.read_text(encoding="utf-8"))
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+
+    assert exit_code == 0
+    assert manifest["attributes"]["max_file_reference_links"] == 0
+    assert manifest["attributes"]["file_reference_link_count"] == 0
+    assert manifest["attributes"]["file_reference_link_limit_reached"] is True
+
+
 def test_document_graph_from_directory_accepts_corpus_options(tmp_path):
     docs = tmp_path / "docs"
     deep = docs / "deep"

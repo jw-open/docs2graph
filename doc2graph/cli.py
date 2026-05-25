@@ -112,6 +112,14 @@ def main(argv: List[str] | None = None) -> int:
         help="Rebuild cached per-file graphs instead of reading existing cache entries",
     )
     parser.add_argument(
+        "--max-file-reference-links",
+        type=int,
+        help=(
+            "Maximum explicit relative file links to add after merging a "
+            "directory corpus; set -1 to disable"
+        ),
+    )
+    parser.add_argument(
         "--max-cross-document-links",
         type=int,
         help=(
@@ -137,6 +145,11 @@ def main(argv: List[str] | None = None) -> int:
         if args.max_cross_document_links is None or args.max_cross_document_links < 0
         else args.max_cross_document_links
     )
+    max_file_reference_links = (
+        None
+        if args.max_file_reference_links is None or args.max_file_reference_links < 0
+        else args.max_file_reference_links
+    )
     graph = build_corpus_graph(
         args.path,
         args.graph,
@@ -153,6 +166,7 @@ def main(argv: List[str] | None = None) -> int:
         cache_path=args.cache,
         output_path=args.output,
         refresh_cache=args.refresh_cache,
+        max_file_reference_links=max_file_reference_links,
         max_cross_document_links=max_cross_document_links,
     )
     payload = json.dumps(graph, indent=2 if args.pretty else None, sort_keys=args.pretty)
