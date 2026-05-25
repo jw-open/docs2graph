@@ -178,6 +178,7 @@ def build_corpus_graph(
     graph_type: str = "knowledge",
     *,
     recursive: bool = True,
+    follow_symlinks: bool = False,
     max_files: int | None = None,
     stop_after_max_files: bool = False,
     max_depth: int | None = None,
@@ -219,6 +220,7 @@ def build_corpus_graph(
     scan = scan_document_files(
         root,
         recursive=recursive,
+        follow_symlinks=follow_symlinks,
         include=include,
         exclude=exclude,
         max_files=max_files,
@@ -297,6 +299,7 @@ def build_corpus_graph(
         "extracted_file_count": 0,
         "extracted_total_bytes": 0,
         "recursive": recursive,
+        "follow_symlinks": follow_symlinks,
         "extraction_method": "static",
         "cache_enabled": cache_stats["enabled"],
         "cache_path": cache_stats["path"],
@@ -346,6 +349,7 @@ def build_corpus_graph(
                 "skipped_file_count": scan.skipped_count,
                 "skipped_file_count_is_complete": not scan.scan_truncated,
                 "recursive": recursive,
+                "follow_symlinks": follow_symlinks,
                 "extraction_method": "static",
             },
         ),
@@ -714,6 +718,7 @@ def scan_document_files(
     root: Path,
     *,
     recursive: bool = True,
+    follow_symlinks: bool = False,
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
     max_files: int | None = None,
@@ -734,6 +739,7 @@ def scan_document_files(
     for path in _iter_candidate_files(
         root,
         recursive=recursive,
+        follow_symlinks=follow_symlinks,
         default_excludes=default_excludes,
         user_excludes=user_excludes,
         reserved_paths=reserved,
@@ -768,6 +774,7 @@ def iter_document_files(
     root: Path,
     *,
     recursive: bool = True,
+    follow_symlinks: bool = False,
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
     max_files: int | None = None,
@@ -779,6 +786,7 @@ def iter_document_files(
     scan = scan_document_files(
         root,
         recursive=recursive,
+        follow_symlinks=follow_symlinks,
         include=include,
         exclude=exclude,
         max_files=max_files,
@@ -794,6 +802,7 @@ def _iter_candidate_files(
     root: Path,
     *,
     recursive: bool,
+    follow_symlinks: bool,
     default_excludes: Sequence[str],
     user_excludes: Sequence[str],
     reserved_paths: frozenset[Path] | None = None,
@@ -858,6 +867,7 @@ def _iter_candidate_files(
                 yield from _iter_candidate_files_for_child(
                     root,
                     path,
+                    follow_symlinks,
                     default_excludes,
                     user_excludes,
                     reserved_paths,
@@ -880,6 +890,11 @@ def _iter_candidate_files(
             continue
         if path_kind == "file":
             yield path
+        elif path_kind == "symlink_file":
+            if follow_symlinks:
+                yield path
+            elif scan is not None:
+                _record_skipped(scan, path, rel, "symlink_file", report_limit)
         elif path_kind == "inaccessible" and scan is not None:
             _record_skipped(scan, path, rel, "path_inaccessible", report_limit)
         elif path_kind == "broken_symlink" and scan is not None:
@@ -889,6 +904,7 @@ def _iter_candidate_files(
 def _iter_candidate_files_for_child(
     root: Path,
     folder: Path,
+    follow_symlinks: bool,
     default_excludes: Sequence[str],
     user_excludes: Sequence[str],
     reserved_paths: frozenset[Path] | None = None,
@@ -953,6 +969,7 @@ def _iter_candidate_files_for_child(
             yield from _iter_candidate_files_for_child(
                 root,
                 path,
+                follow_symlinks,
                 default_excludes,
                 user_excludes,
                 reserved_paths,
@@ -965,6 +982,11 @@ def _iter_candidate_files_for_child(
                 return
         elif path_kind == "file":
             yield path
+        elif path_kind == "symlink_file":
+            if follow_symlinks:
+                yield path
+            elif scan is not None:
+                _record_skipped(scan, path, rel, "symlink_file", report_limit)
         elif path_kind == "inaccessible" and scan is not None:
             _record_skipped(scan, path, rel, "path_inaccessible", report_limit)
         elif path_kind == "broken_symlink" and scan is not None:
@@ -1274,7 +1296,7 @@ def _path_kind(path: Path) -> str:
     try:
         if path.is_symlink():
             if path.exists():
-                return "symlink_directory" if path.is_dir() else "file"
+                return "symlink_directory" if path.is_dir() else "symlink_file"
             return "broken_symlink"
         if path.is_dir():
             return "directory"

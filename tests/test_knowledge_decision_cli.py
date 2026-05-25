@@ -1502,6 +1502,75 @@ def test_directory_corpus_reports_symlinked_directories_without_descending(tmp_p
     assert file_paths == ["visible.md"]
 
 
+def test_directory_corpus_reports_symlinked_files_by_default(tmp_path):
+    docs = tmp_path / "docs"
+    external = tmp_path / "external.md"
+    docs.mkdir()
+    external.write_text("# External\n\nTarget document.", encoding="utf-8")
+    link = docs / "linked.md"
+    try:
+        link.symlink_to(external)
+    except OSError as exc:
+        pytest.skip(f"file symlinks are unavailable: {exc}")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", skip_report_limit=10)
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "symlink_file"
+    ]
+
+    assert manifest["attributes"]["follow_symlinks"] is False
+    assert manifest["attributes"]["selected_file_count"] == 0
+    assert manifest["attributes"]["skipped_by_reason"] == {"symlink_file": 1}
+    assert file_paths == []
+    assert skipped[0]["attributes"]["relative_path"] == "linked.md"
+
+
+def test_directory_corpus_can_extract_symlinked_files_when_enabled(tmp_path):
+    docs = tmp_path / "docs"
+    external = tmp_path / "external.md"
+    docs.mkdir()
+    external.write_text("# External\n\nTarget document.", encoding="utf-8")
+    link = docs / "linked.md"
+    try:
+        link.symlink_to(external)
+    except OSError as exc:
+        pytest.skip(f"file symlinks are unavailable: {exc}")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        follow_symlinks=True,
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_attrs = [
+        n["attributes"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    sections = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "section"
+    ]
+
+    assert manifest["attributes"]["follow_symlinks"] is True
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["skipped_by_reason"] == {}
+    assert file_attrs[0]["relative_path"] == "linked.md"
+    assert file_attrs[0]["status"] == "extracted"
+    assert any("Target document" in (section.get("content") or "") for section in sections)
+
+
 def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()

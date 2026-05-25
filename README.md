@@ -89,6 +89,7 @@ doc2graph ./exports --graph all --max-files 500 --stop-after-max-files
 doc2graph ./exports --graph all --max-total-bytes 1073741824 --output corpus.graph.json
 doc2graph ./exports --graph all --max-depth 2 --output corpus.graph.json
 doc2graph ./exports --graph all --max-scan-entries 100000 --output corpus.graph.json
+doc2graph ./exports --graph all --follow-symlinks --output corpus.graph.json
 doc2graph ./exports --graph all --max-file-reference-links 50000 --output corpus.graph.json
 doc2graph ./exports --graph all --max-cross-document-links 50000 --output corpus.graph.json
 doc2graph ./exports --graph all --skip-report-limit 25 --output corpus.graph.json
@@ -112,6 +113,11 @@ Large corpora are handled by deterministic limits:
 - `--max-total-bytes -1`: disable the cumulative byte guard.
 - `--no-recursive`: only process files directly under the directory and
   report skipped subdirectories as `non_recursive_directory`.
+- `--follow-symlinks`: extract symlinked files that appear inside a directory
+  corpus. By default symlinked files are reported as `symlink_file` skips so a
+  corpus run does not silently read documents through links. Symlinked
+  directories are always skipped as `symlink_directory` to avoid traversal
+  loops.
 - `--max-depth N`: bound recursive descent by subdirectory depth; `0` keeps
   only files directly under the corpus root and reports pruned directories.
 - `--max-scan-entries N`: stop the deterministic directory walk after
@@ -219,8 +225,8 @@ failed-file counts, and skip reasons
 such as unsupported extensions, include-filter mismatches, max-file limits,
 cumulative byte limits, oversized files,
 depth-pruned directories, default ignored generated paths, user excluded paths,
-non-recursive skipped directories, symlinked directories, inaccessible paths, and
-reserved cache/output files, and per-file extraction errors. This
+non-recursive skipped directories, symlinked directories, symlinked files,
+inaccessible paths, reserved cache/output files, and per-file extraction errors. This
 keeps large mixed-folder runs deterministic and auditable without requiring all
 omitted paths to be materialized as graph nodes.
 

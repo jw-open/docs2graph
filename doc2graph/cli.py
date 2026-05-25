@@ -53,6 +53,14 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--output", "-o", help="Write JSON graph to this path")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
     parser.add_argument("--no-recursive", action="store_true", help="Do not recurse into subdirectories")
+    parser.add_argument(
+        "--follow-symlinks",
+        action="store_true",
+        help=(
+            "Extract symlinked files inside directory corpora; symlinked "
+            "directories are still skipped to avoid traversal loops"
+        ),
+    )
     parser.add_argument("--max-files", type=int, help="Maximum number of files to process from a directory")
     parser.add_argument(
         "--stop-after-max-files",
@@ -154,6 +162,7 @@ def main(argv: List[str] | None = None) -> int:
         args.path,
         args.graph,
         recursive=not args.no_recursive,
+        follow_symlinks=args.follow_symlinks,
         max_files=args.max_files,
         stop_after_max_files=args.stop_after_max_files,
         max_depth=args.max_depth,
