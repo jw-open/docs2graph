@@ -112,9 +112,9 @@ Large corpora are handled by deterministic limits:
   user exclude filters are counted as `exclude_filter_match` skips.
 - `--skip-report-limit N`: cap the total number of omitted files listed as
   `skipped_file` or extraction-error nodes while still preserving aggregate
-  skip counts. The corpus manifest reports how many skips were materialized as
-  nodes, how many were omitted by this cap, and whether the skip report was
-  truncated.
+  skip counts and a deterministic SHA-256 digest of skipped path records. The
+  corpus manifest reports how many skips were materialized as nodes, how many
+  were omitted by this cap, and whether the skip report was truncated.
 - `--cache PATH`: opt into a JSON cache that reuses unchanged per-file graph
   extraction across repeated corpus runs. If the cache file is inside the
   scanned corpus directory, doc2graph reserves it as an output artifact and
@@ -145,7 +145,7 @@ and citation provenance.
 
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, a deterministic selected-path ordering contract and SHA-256 digest,
-skipped-file counts, cache hit/miss/write counts when caching is
+skipped-file counts, a deterministic skipped-record digest, cache hit/miss/write counts when caching is
 enabled, the content-digest and extraction fingerprint validation used for
 cache entries,
 stale cache entries pruned for the current root and graph type,

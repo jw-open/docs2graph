@@ -216,6 +216,8 @@ def build_corpus_graph(
         ),
         "skipped_file_count": scan.skipped_count,
         "skipped_by_reason": dict(sorted(scan.skipped_by_reason.items())),
+        "skipped_file_records_sha256": scan.skipped_records_digest.hexdigest(),
+        "skipped_file_records_sha256_is_complete": not scan.scan_truncated,
         "reported_skipped_file_count": len(scan.skipped_samples),
         "unreported_skipped_file_count": max(
             0,
@@ -332,6 +334,7 @@ def build_corpus_graph(
                 rel,
                 "max_total_bytes_exceeded",
                 runtime_skipped_by_reason,
+                scan.skipped_records_digest,
                 total_report_limit=total_report_limit,
                 existing_reported_count=len(scan.skipped_samples) + runtime_reported_skips,
                 attributes={
@@ -354,6 +357,7 @@ def build_corpus_graph(
                 rel,
                 "file_too_large",
                 runtime_skipped_by_reason,
+                scan.skipped_records_digest,
                 total_report_limit=total_report_limit,
                 existing_reported_count=len(scan.skipped_samples) + runtime_reported_skips,
                 attributes={
@@ -380,6 +384,7 @@ def build_corpus_graph(
                 rel,
                 "max_total_bytes_exceeded",
                 runtime_skipped_by_reason,
+                scan.skipped_records_digest,
                 total_report_limit=total_report_limit,
                 existing_reported_count=len(scan.skipped_samples) + runtime_reported_skips,
                 attributes={
@@ -425,6 +430,7 @@ def build_corpus_graph(
             attrs["error_type"] = type(exc).__name__
             attrs["error_message"] = str(exc)
             _count_skip(runtime_skipped_by_reason, "load_error")
+            _update_skip_digest(scan.skipped_records_digest, rel, "load_error", "file")
             if len(scan.skipped_samples) + runtime_reported_skips < total_report_limit:
                 error_id = _id("load_error", f"{rel}:{type(exc).__name__}:{exc}")
                 nodes.append(
@@ -464,6 +470,8 @@ def build_corpus_graph(
     manifest_attrs["skipped_file_count"] = scan.skipped_count
     manifest_attrs["skipped_file_count_is_complete"] = not scan.scan_truncated
     manifest_attrs["skipped_by_reason"] = dict(sorted(scan.skipped_by_reason.items()))
+    manifest_attrs["skipped_file_records_sha256"] = scan.skipped_records_digest.hexdigest()
+    manifest_attrs["skipped_file_records_sha256_is_complete"] = not scan.scan_truncated
     manifest_attrs["reported_skipped_file_count"] = len(scan.skipped_samples) + runtime_reported_skips
     manifest_attrs["unreported_skipped_file_count"] = max(
         0,
@@ -515,6 +523,7 @@ class CorpusScan:
     skipped_samples: List[SkippedFile] = field(default_factory=list)
     scanned_entry_count: int = 0
     scan_truncated: bool = False
+    skipped_records_digest: Any = field(default_factory=hashlib.sha256)
 
 
 def scan_document_files(
@@ -1141,12 +1150,15 @@ def _add_runtime_skip(
     rel: str,
     reason: str,
     counts: Dict[str, int],
+    skipped_records_digest: Any,
     *,
     total_report_limit: int,
     existing_reported_count: int,
     attributes: Dict[str, Any] | None = None,
 ) -> int:
     _count_skip(counts, reason)
+    path_type = str((attributes or {}).get("path_type") or "file")
+    _update_skip_digest(skipped_records_digest, rel, reason, path_type)
     if existing_reported_count >= total_report_limit:
         return 0
     skipped_id = _id("skipped_file", f"{reason}:{rel}")
@@ -1175,10 +1187,17 @@ def _record_skipped(
 ) -> None:
     _count_skip(result.skipped_by_reason, reason)
     result.skipped_count += 1
+    _update_skip_digest(result.skipped_records_digest, rel, reason, path_type)
     if len(result.skipped_samples) < report_limit:
         result.skipped_samples.append(
             SkippedFile(path=path, relative_path=rel, reason=reason, path_type=path_type)
         )
+
+
+def _update_skip_digest(digest: Any, rel: str, reason: str, path_type: str) -> None:
+    for value in (reason, path_type, rel):
+        digest.update(value.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
 
 
 def _count_skip(counts: Dict[str, int], reason: str) -> None:

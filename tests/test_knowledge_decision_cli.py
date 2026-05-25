@@ -88,6 +88,15 @@ The team needs a repeatable ingestion strategy.
 """
 
 
+def _skip_records_sha256(records):
+    digest = hashlib.sha256()
+    for reason, path_type, relative_path in records:
+        for value in (reason, path_type, relative_path):
+            digest.update(value.encode("utf-8", errors="surrogateescape"))
+            digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def test_extract_knowledge_graph_for_paper_signals():
     graph = extract_knowledge_graph(PAPER, source="paper.md")
     node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
@@ -535,6 +544,30 @@ def test_directory_corpus_skip_report_limit_bounds_nodes(tmp_path):
     assert len(reported_skips) == 1
 
 
+def test_directory_corpus_skip_digest_covers_unreported_scan_skips(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    for index in range(3):
+        (docs / f"ignored-{index}.bin").write_bytes(b"\x00")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        skip_report_limit=1,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+
+    assert manifest["attributes"]["skipped_file_records_sha256"] == _skip_records_sha256(
+        [
+            ("unsupported_extension", "file", "ignored-0.bin"),
+            ("unsupported_extension", "file", "ignored-1.bin"),
+            ("unsupported_extension", "file", "ignored-2.bin"),
+        ]
+    )
+    assert manifest["attributes"]["skipped_file_records_sha256_is_complete"] is True
+
+
 def test_directory_corpus_skip_report_limit_bounds_scan_and_runtime_skips(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -563,6 +596,12 @@ def test_directory_corpus_skip_report_limit_bounds_scan_and_runtime_skips(tmp_pa
     assert manifest["attributes"]["skip_report_truncated"] is True
     assert len(reported_skips) == 1
     assert reported_skips[0]["attributes"]["reason"] == "unsupported_extension"
+    assert manifest["attributes"]["skipped_file_records_sha256"] == _skip_records_sha256(
+        [
+            ("unsupported_extension", "file", "a.bin"),
+            ("file_too_large", "file", "b.md"),
+        ]
+    )
 
 
 def test_directory_corpus_limits_total_extracted_bytes(tmp_path):
@@ -691,6 +730,7 @@ def test_directory_corpus_can_truncate_large_scans(tmp_path):
     assert manifest["attributes"]["max_scan_entries_reached"] is True
     assert manifest["attributes"]["scanned_entry_count"] == 2
     assert manifest["attributes"]["skipped_file_count_is_complete"] is False
+    assert manifest["attributes"]["skipped_file_records_sha256_is_complete"] is False
     assert manifest["attributes"]["skipped_by_reason"] == {"max_scan_entries_exceeded": 1}
     assert skipped[0]["attributes"]["relative_path"] == "c.md"
 
