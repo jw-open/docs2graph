@@ -23,10 +23,17 @@ _SECTION_TYPES = {
         "requirements",
         "constraint",
         "constraints",
+        "assumption",
+        "assumptions",
         "driver",
         "drivers",
         "decision driver",
         "decision drivers",
+        "rationale",
+        "reason",
+        "reasons",
+        "non goal",
+        "non goals",
     ),
     "option": ("option", "alternative", "approach", "solution"),
     "pros": ("pros", "benefits", "advantages"),
@@ -85,6 +92,7 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
     current_option_id = None
     selected_option_id = None
     current_decision_id = None
+    context_ids: List[str] = []
     option_records: List[Dict[str, str]] = []
 
     for index, section in enumerate(sections):
@@ -106,6 +114,12 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
 
         if kind == "problem":
             last_problem_id = section_id
+        elif kind == "context":
+            context_ids.append(section_id)
+            if last_problem_id:
+                _add_edge(edges, seen_edges, last_problem_id, section_id, "has_context")
+            if current_decision_id:
+                _add_edge(edges, seen_edges, current_decision_id, section_id, "informed_by")
         elif kind == "option":
             current_option_id = section_id
             option_records.append({"id": section_id, "title": section["title"], "content": section["content"]})
@@ -120,6 +134,8 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
             selected_option_id = _select_option_id(section["content"], option_records) or current_option_id
             if selected_option_id:
                 _add_edge(edges, seen_edges, section_id, selected_option_id, "selects")
+            for context_id in context_ids:
+                _add_edge(edges, seen_edges, section_id, context_id, "informed_by")
         elif kind == "consequence":
             if current_decision_id:
                 _add_edge(edges, seen_edges, current_decision_id, section_id, "has_consequence")
@@ -171,6 +187,12 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
 
             if bullet_kind == "problem":
                 last_problem_id = bullet_id
+            elif bullet_kind == "context":
+                context_ids.append(bullet_id)
+                if last_problem_id:
+                    _add_edge(edges, seen_edges, last_problem_id, bullet_id, "has_context")
+                if current_decision_id:
+                    _add_edge(edges, seen_edges, current_decision_id, bullet_id, "informed_by")
             elif bullet_kind == "option":
                 current_option_id = bullet_id
                 option_records.append({"id": bullet_id, "title": bullet, "content": bullet})
@@ -185,6 +207,8 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
                 selected_option_id = _select_option_id(bullet, option_records) or current_option_id
                 if selected_option_id:
                     _add_edge(edges, seen_edges, bullet_id, selected_option_id, "selects")
+                for context_id in context_ids:
+                    _add_edge(edges, seen_edges, bullet_id, context_id, "informed_by")
             elif bullet_kind == "consequence":
                 if current_decision_id:
                     _add_edge(edges, seen_edges, current_decision_id, bullet_id, "has_consequence")
@@ -242,12 +266,38 @@ def _classify_bullet(text: str, default: str) -> str:
         return "option"
     if lower.startswith(("pro:", "benefit:", "advantage:")):
         return "pros"
-    if lower.startswith(("con:", "drawback:", "risk:", "cost:")):
+    if lower.startswith(("risk:", "risk -", "risk.")):
+        return "consequence" if default == "consequence" else "cons"
+    if lower.startswith(("con:", "drawback:", "cost:")):
         return "cons"
     if "tradeoff" in lower or "trade-off" in lower or "but " in lower:
         return "tradeoff"
     if lower.startswith(("decide", "decision:", "choose", "chosen", "selected:", "status:")):
         return "decision"
+    if lower.startswith((
+        "context:",
+        "background:",
+        "goal:",
+        "goals:",
+        "requirement:",
+        "requirements:",
+        "constraint:",
+        "constraints:",
+        "assumption:",
+        "assumptions:",
+        "driver:",
+        "drivers:",
+        "decision driver:",
+        "decision drivers:",
+        "rationale:",
+        "reason:",
+        "reasons:",
+        "non-goal:",
+        "non-goals:",
+        "non goal:",
+        "non goals:",
+    )):
+        return "context"
     if _decision_status("", text):
         return "decision"
     if lower.startswith(("consequence:", "impact:", "result:", "risk:")):

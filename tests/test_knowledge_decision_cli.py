@@ -110,6 +110,18 @@ Choose static extraction.
 """
 
 
+HEADINGLESS_CONTEXT_DECISION = """- Problem: repeated corpus extraction wastes time.
+- Constraint: default runs must stay deterministic and offline.
+- Assumption: source files are stable between warm-cache runs.
+- Rationale: content hashes are enough to validate unchanged graph output.
+- Option A: rebuild every file.
+- Option B: reuse unchanged per-file graph entries.
+- Decision: choose Option B.
+- Consequence: repeated runs avoid unnecessary extraction work.
+- Confidence: high.
+"""
+
+
 def _skip_records_sha256(records):
     digest = hashlib.sha256()
     for reason, path_type, relative_path in records:
@@ -398,6 +410,43 @@ def test_extract_decision_graph_classifies_adr_status_and_drivers():
     assert status["attributes"]["decision_status"] == "accepted"
     assert drivers["attributes"]["type"] == "context"
     assert any(n["label"] == "Decision" for n in decision_nodes)
+
+
+def test_extract_decision_graph_classifies_headingless_context_bullets():
+    graph = extract_decision_graph(HEADINGLESS_CONTEXT_DECISION, source="headingless-adr.md")
+    context_nodes = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "context"
+    ]
+    decision = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "decision"
+        and n["label"] == "Decision: choose Option B."
+    )
+    problem = next(
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "problem"
+    )
+    context_labels = {n["label"] for n in context_nodes}
+    informed_by_targets = {
+        e["to"]
+        for e in graph["edges"]
+        if e["from"] == decision["id"] and e["label"] == "informed_by"
+    }
+
+    assert {
+        "Constraint: default runs must stay deterministic and offline.",
+        "Assumption: source files are stable between warm-cache runs.",
+        "Rationale: content hashes are enough to validate unchanged graph output.",
+    } <= context_labels
+    assert all(node["id"] in informed_by_targets for node in context_nodes)
+    assert any(
+        e["from"] == problem["id"] and e["to"] in {n["id"] for n in context_nodes} and e["label"] == "has_context"
+        for e in graph["edges"]
+    )
 
 
 def test_build_graph_and_document_graph_from_document(tmp_path):

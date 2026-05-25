@@ -50,7 +50,7 @@ doc2graph ./docs --graph all --output docs-corpus.graph.json
 ```
 
 - `knowledge`: document, section, concept, definition, claim, evidence, citation, reference, and URL nodes.
-- `decision`: problem, context, option, pros, cons, tradeoff, decision, consequence, and confidence nodes from ADR headings, status sections, bullets, and Markdown option tables.
+- `decision`: problem, context/driver/rationale, option, pros, cons, tradeoff, decision, consequence, and confidence nodes from ADR headings, status sections, bullets, and Markdown option tables.
 - `schema`: table/entity graphs from schema docs and data dictionaries.
 - `media`: image/chart metadata, OCR text, and chart signal nodes.
 - `all`: merged graph from the supported document extractors.
@@ -240,6 +240,13 @@ separate per file while preserving their original labels and source
 provenance. This prevents corpus merges from silently dropping same-named
 sections, claims, decision nodes, citations, references, URLs, or schema
 tables from later files.
+
+Decision extraction recognizes common ADR context bullets such as
+`Constraint:`, `Assumption:`, `Decision driver:`, and `Rationale:` as context
+instead of generic decision text, then links them to the problem with
+`has_context` and to later decision nodes with `informed_by`. This keeps the
+reasoning trail traversable for PageRank without adding non-deterministic
+inference.
 
 Outputs are plain JSON:
 
