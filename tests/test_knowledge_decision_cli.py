@@ -166,6 +166,32 @@ def test_extract_knowledge_graph_resolves_inline_citations_to_references():
     assert len(evidence_cites) == 1
 
 
+def test_extract_knowledge_graph_resolves_author_year_citations_to_references():
+    text = """# Abstract
+
+This paper proposes evidence-aware graph ranking for corpus context (Smith, 2024).
+Evaluation results show recall improves on multi-hop questions (Lee et al., 2025).
+
+# References
+
+Smith, A. Evidence-Aware Graph Ranking. 2024.
+Lee et al. Corpus Context Selection. 2025.
+"""
+    graph = extract_knowledge_graph(text, source="author-year.md")
+    references = [
+        n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "reference"
+    ]
+    citations = [
+        n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "citation"
+    ]
+    resolved = [e for e in graph["edges"] if e["label"] == "resolves_to"]
+
+    assert {n["attributes"]["key"] for n in references} == {"Smith, 2024", "Lee, 2025"}
+    assert {n["label"] for n in citations} == {"Smith, 2024", "Lee et al., 2025"}
+    assert all("aliases" in n["attributes"] for n in references)
+    assert len(resolved) == 2
+
+
 def test_extract_knowledge_graph_adds_definition_provenance():
     text = """# Glossary
 

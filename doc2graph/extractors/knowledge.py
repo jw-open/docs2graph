@@ -21,6 +21,12 @@ _URL_RE = re.compile(r"https?://[^\s)>\]]+")
 _BRACKET_CITATION_RE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
 _AUTHOR_YEAR_RE = re.compile(r"\(([A-Z][A-Za-z\-]+(?:\s+et\s+al\.)?,\s*(?:19|20)\d{2})\)")
 _REFERENCE_ENTRY_RE = re.compile(r"^\s*\[(\d+)\]\s+(.+)$")
+_REFERENCE_AUTHOR_YEAR_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:\[\d+\]\s*)?"
+    r"([A-Z][A-Za-z\-]+)(\s+et\s+al\.)?"
+    r"(?:,\s+[A-Z](?:\.[A-Z]\.)?\.?)?"
+    r".*?\b((?:19|20)\d{2})\b"
+)
 _PHRASE_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9\-]*(?:\s+[A-Za-z][A-Za-z0-9\-]*){1,4}\b")
 _GLOSSARY_DEFINITION_RE = re.compile(
     r"^\s*(?:[-*]\s+)?(?:\*\*)?([A-Za-z][A-Za-z0-9 /+\-]{1,80}?)"
@@ -134,10 +140,12 @@ def extract_knowledge_graph(
     reference_ids: Dict[str, str] = {}
     for reference in _extract_reference_entries(sections):
         reference_id = _source_node_id("reference", f"{reference['key']}-{reference['content']}", source)
-        reference_ids.setdefault(reference["key"], reference_id)
+        for key in reference["keys"]:
+            reference_ids.setdefault(key, reference_id)
         _add_node(nodes, seen_nodes, reference_id, reference["label"], reference["content"], {
             "type": "reference",
             "key": reference["key"],
+            "aliases": reference["keys"],
             "source": source,
             "document_id": doc_id,
             "section": reference["section"],
@@ -486,7 +494,7 @@ def _extract_reference_entries(sections: List[Dict[str, Any]]) -> List[Dict[str,
             match = _REFERENCE_ENTRY_RE.match(line)
             if match:
                 if current is not None:
-                    references.append(current)
+                    references.append(_finalize_reference(current))
                 key = match.group(1).strip()
                 content = match.group(2).strip()
                 current = {
@@ -496,12 +504,49 @@ def _extract_reference_entries(sections: List[Dict[str, Any]]) -> List[Dict[str,
                     "section": section["title"],
                     "section_index": index,
                 }
+            elif current is None:
+                key = _infer_author_year_key(line)
+                if key:
+                    references.append(_finalize_reference({
+                        "key": key,
+                        "label": f"[{key}] {_label(line, limit=80)}",
+                        "content": line,
+                        "section": section["title"],
+                        "section_index": index,
+                    }))
             elif current is not None:
                 current["content"] = f"{current['content']} {line}".strip()
                 current["label"] = f"[{current['key']}] {_label(current['content'], limit=80)}"
         if current is not None:
-            references.append(current)
+            references.append(_finalize_reference(current))
     return references
+
+
+def _finalize_reference(reference: Dict[str, Any]) -> Dict[str, Any]:
+    keys = [reference["key"]]
+    for inferred in _infer_author_year_keys(reference["content"]):
+        if inferred and inferred not in keys:
+            keys.append(inferred)
+    reference["keys"] = keys
+    return reference
+
+
+def _infer_author_year_key(text: str) -> str:
+    keys = _infer_author_year_keys(text)
+    return keys[0] if keys else ""
+
+
+def _infer_author_year_keys(text: str) -> List[str]:
+    match = _REFERENCE_AUTHOR_YEAR_RE.match(text.strip())
+    if not match:
+        return []
+    surname = match.group(1)
+    et_al = bool(match.group(2))
+    year = match.group(3)
+    keys = [f"{surname}, {year}"]
+    if et_al:
+        keys.append(f"{surname} et al., {year}")
+    return keys
 
 
 def _add_citation_edges(

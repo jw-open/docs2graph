@@ -176,7 +176,8 @@ Large corpora are handled by deterministic limits:
   document extension such as `.md` or `.txt`.
 - `--refresh-cache`: rebuild cached entries while writing an updated cache.
 
-Knowledge extraction also resolves numeric inline citations such as `[1]` to
+Knowledge extraction also resolves numeric inline citations such as `[1]` and
+author-year citations such as `(Smith, 2024)` or `(Lee et al., 2025)` to
 matching entries in `# References`, `# Bibliography`, or `# Works Cited`
 sections when those entries are present. Claim and evidence nodes keep their
 own `cites` edges, and citation nodes connect to parsed reference entries with
