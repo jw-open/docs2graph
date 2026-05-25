@@ -212,6 +212,8 @@ def build_corpus_graph(
         "hits": 0,
         "misses": 0,
         "writes": 0,
+        "content_digest_hits": 0,
+        "content_digest_misses": 0,
         "pruned": 0,
         "refresh": refresh_cache,
         "write_status": None,
@@ -276,6 +278,8 @@ def build_corpus_graph(
         "cache_hits": cache_stats["hits"],
         "cache_misses": cache_stats["misses"],
         "cache_writes": cache_stats["writes"],
+        "cache_content_digest_hits": cache_stats["content_digest_hits"],
+        "cache_content_digest_misses": cache_stats["content_digest_misses"],
         "cache_pruned": cache_stats["pruned"],
         "cache_prune_status": None,
         "cache_file_updated": False,
@@ -427,9 +431,29 @@ def build_corpus_graph(
         try:
             graph = None
             cache_key = _cache_key(root, file_path, graph_type)
-            metadata = _file_metadata(root, file_path, graph_type)
+            cached = (
+                cache.get("entries", {}).get(cache_key)
+                if isinstance(cache.get("entries"), dict)
+                else None
+            )
+            cached_metadata = (
+                cached.get("metadata")
+                if isinstance(cached, dict) and isinstance(cached.get("metadata"), dict)
+                else None
+            )
+            metadata = _file_metadata(
+                root,
+                file_path,
+                graph_type,
+                cached_metadata=cached_metadata,
+            )
+            content_sha256_reused = bool(metadata.pop("content_sha256_reused", False))
+            if cache_path is not None:
+                if content_sha256_reused:
+                    cache_stats["content_digest_hits"] += 1
+                else:
+                    cache_stats["content_digest_misses"] += 1
             if cache_path is not None and not refresh_cache:
-                cached = cache.get("entries", {}).get(cache_key)
                 if (
                     isinstance(cached, dict)
                     and cached.get("metadata") == metadata
@@ -522,6 +546,8 @@ def build_corpus_graph(
     manifest_attrs["cache_hits"] = cache_stats["hits"]
     manifest_attrs["cache_misses"] = cache_stats["misses"]
     manifest_attrs["cache_writes"] = cache_stats["writes"]
+    manifest_attrs["cache_content_digest_hits"] = cache_stats["content_digest_hits"]
+    manifest_attrs["cache_content_digest_misses"] = cache_stats["content_digest_misses"]
     nodes[0]["attributes"]["skipped_file_count"] = scan.skipped_count
     nodes[0]["attributes"]["skipped_file_count_is_complete"] = not scan.scan_truncated
     nodes[0]["attributes"]["extracted_file_count"] = extracted_file_count
@@ -1092,16 +1118,39 @@ def _relative_depth(root: Path, path: Path) -> int:
     return len(path.relative_to(root).parts)
 
 
-def _file_metadata(root: Path, path: Path, graph_type: str) -> Dict[str, Any]:
+def _file_metadata(
+    root: Path,
+    path: Path,
+    graph_type: str,
+    *,
+    cached_metadata: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     stat = path.stat()
+    stat_metadata = {
+        "size_bytes": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+        "ctime_ns": stat.st_ctime_ns,
+        "inode": stat.st_ino,
+    }
+    content_sha256 = None
+    content_sha256_reused = False
+    if cached_metadata and all(
+        cached_metadata.get(key) == value for key, value in stat_metadata.items()
+    ):
+        cached_digest = cached_metadata.get("content_sha256")
+        if isinstance(cached_digest, str) and cached_digest:
+            content_sha256 = cached_digest
+            content_sha256_reused = True
+    if content_sha256 is None:
+        content_sha256 = _file_sha256(path)
     return {
         "root": str(root.resolve()),
         "relative_path": path.relative_to(root).as_posix(),
         "graph_type": graph_type,
         "extraction_fingerprint": _extraction_fingerprint(graph_type),
-        "size_bytes": stat.st_size,
-        "mtime_ns": stat.st_mtime_ns,
-        "content_sha256": _file_sha256(path),
+        **stat_metadata,
+        "content_sha256": content_sha256,
+        "content_sha256_reused": content_sha256_reused,
         "suffix": path.suffix.lower(),
     }
 

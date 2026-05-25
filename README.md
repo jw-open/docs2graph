@@ -133,7 +133,10 @@ Large corpora are handled by deterministic limits:
   stale entries are rebuilt after doc2graph changes or file edits even when
   size and mtime metadata are unchanged. Warm-cache runs leave the cache file
   untouched when its deterministic JSON payload would not change, and the
-  manifest reports this as `cache_file_updated: false`.
+  manifest reports this as `cache_file_updated: false`. Warm entries also
+  reuse cached content digests when file size, mtime, ctime, and inode match,
+  avoiding redundant full-file hashing on large unchanged corpora while still
+  falling back to a fresh SHA-256 when the stat signature changes.
   The manifest also reports `cache_load_status` (`missing`, `loaded`,
   `invalid_json`, `invalid_schema`, or `read_error`) plus
   `cache_entry_count_before` and `cache_entry_count_after`, so invalid cache
@@ -173,6 +176,7 @@ the cache load status and before/after cache entry counts,
 stale cache entries pruned for the current root and graph type,
 whether cache pruning was safe for the current selection,
 whether the cache file was actually updated,
+content-digest reuse hit/miss counts for warm cache validation,
 cache write status and write errors when an explicit cache path cannot be updated,
 the number of deterministic cross-document mention links added,
 active include/exclude patterns, extracted-file byte counts, scan budget state,

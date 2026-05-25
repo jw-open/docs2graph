@@ -1118,15 +1118,21 @@ def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
     assert first_manifest["attributes"]["cache_hits"] == 0
     assert first_manifest["attributes"]["cache_misses"] == 2
     assert first_manifest["attributes"]["cache_writes"] == 2
+    assert first_manifest["attributes"]["cache_content_digest_hits"] == 0
+    assert first_manifest["attributes"]["cache_content_digest_misses"] == 2
     assert first_manifest["attributes"]["cache_file_updated"] is True
     assert second_manifest["attributes"]["cache_hits"] == 2
     assert second_manifest["attributes"]["cache_misses"] == 0
     assert second_manifest["attributes"]["cache_writes"] == 0
+    assert second_manifest["attributes"]["cache_content_digest_hits"] == 2
+    assert second_manifest["attributes"]["cache_content_digest_misses"] == 0
     assert second_manifest["attributes"]["cache_file_updated"] is False
     assert refreshed_manifest["attributes"]["cache_refresh"] is True
     assert refreshed_manifest["attributes"]["cache_hits"] == 0
     assert refreshed_manifest["attributes"]["cache_misses"] == 2
     assert refreshed_manifest["attributes"]["cache_writes"] == 2
+    assert refreshed_manifest["attributes"]["cache_content_digest_hits"] == 2
+    assert refreshed_manifest["attributes"]["cache_content_digest_misses"] == 0
     assert refreshed_manifest["attributes"]["cache_file_updated"] is False
     assert first_manifest["attributes"]["cache_load_status"] == "missing"
     assert first_manifest["attributes"]["cache_entry_count_before"] == 0
@@ -1144,6 +1150,38 @@ def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
         for n in refreshed["nodes"]
         if n.get("attributes", {}).get("type") == "file"
     } == {"a.md": "refresh", "b.md": "refresh"}
+
+
+def test_directory_corpus_reuses_cached_content_digests_for_unchanged_files(tmp_path, monkeypatch):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    from doc2graph import corpus
+
+    original_file_sha256 = corpus._file_sha256
+    calls = []
+
+    def track_file_sha256(path):
+        calls.append(path.name)
+        return original_file_sha256(path)
+
+    monkeypatch.setattr(corpus, "_file_sha256", track_file_sha256)
+
+    build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    first_hashes = list(calls)
+    calls.clear()
+    second = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    manifest = next(n for n in second["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+
+    assert sorted(first_hashes) == ["a.md", "b.md"]
+    assert calls == []
+    assert manifest["attributes"]["cache_hits"] == 2
+    assert manifest["attributes"]["cache_content_digest_hits"] == 2
+    assert manifest["attributes"]["cache_content_digest_misses"] == 0
 
 
 def test_directory_corpus_reports_invalid_cache_json_and_rebuilds(tmp_path):
@@ -1316,6 +1354,8 @@ def test_directory_corpus_cache_uses_content_digest_not_only_stat_metadata(tmp_p
     assert second_manifest["attributes"]["cache_hits"] == 0
     assert second_manifest["attributes"]["cache_misses"] == 1
     assert second_manifest["attributes"]["cache_writes"] == 1
+    assert second_manifest["attributes"]["cache_content_digest_hits"] == 0
+    assert second_manifest["attributes"]["cache_content_digest_misses"] == 1
     assert refreshed_entry["metadata"]["content_sha256"]
     assert "Bravo graph cache" in section["content"]
 
