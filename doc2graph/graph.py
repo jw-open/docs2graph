@@ -85,16 +85,22 @@ class DocumentGraph:
     @classmethod
     def from_document(cls, path: str, graph_type: str = "knowledge") -> "DocumentGraph":
         """
-        Build a DocumentGraph from a documentation file.
+        Build a DocumentGraph from a documentation file, URL, or directory.
 
         ``graph_type`` can be ``"knowledge"``, ``"decision"``, ``"schema"``,
         ``"media"``, or ``"all"``. This is the document-native path for
-        papers, manuals, ADRs, RFCs, design docs, and visual sources.
+        papers, manuals, ADRs, RFCs, design docs, visual sources, and mixed
+        document corpora.
         """
         from .cli import build_graph
 
         graph = build_graph(path, graph_type=graph_type)
         return cls.from_dict(graph)
+
+    @classmethod
+    def from_directory(cls, path: str, graph_type: str = "knowledge") -> "DocumentGraph":
+        """Build one DocumentGraph from a directory of mixed document files."""
+        return cls.from_document(path, graph_type=graph_type)
 
     @classmethod
     def from_texts(cls, texts: List[Dict[str, str]]) -> "DocumentGraph":

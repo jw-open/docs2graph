@@ -32,7 +32,7 @@ Entity extraction ──► Relationship extraction
           Your LLM prompt
 ```
 
-1. Feed it a document — PDF, Google Doc export URL, Markdown, plain text, HTML, image/chart, code file
+1. Feed it a document or folder tree — PDF, Google Doc export URL, Markdown, plain text, HTML, image/chart, code file, or mixed document corpus
 2. It extracts entities (people, concepts, terms, sections) as nodes
 3. It extracts relationships (references, defines, depends-on, authored-by) as edges
 4. You query the graph and get back only the relevant subgraph
@@ -46,6 +46,7 @@ doc2graph architecture.md --graph decision --output decisions.graph.json
 doc2graph schema.md --graph schema --output schema.graph.json
 doc2graph chart.png --graph media --output chart.graph.json
 doc2graph docs.md --graph all --output docs.graph.json
+doc2graph ./docs --graph all --output docs-corpus.graph.json
 ```
 
 - `knowledge`: document, section, concept, claim, evidence, citation, and URL nodes.
@@ -61,9 +62,29 @@ doc2graph docs.md --graph all --output docs.graph.json
 - PDF: native embedded text via `pypdf`, with OCR fallback for scanned PDFs
 - Images/charts: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.tif`, `.tiff`, `.bmp` via OCR and media metadata
 - URLs: generic text/HTML URLs and public/exportable Google Docs, Sheets, and Slides URLs
+- Directories: recursive mixed-format corpora with folder/file provenance nodes
 
 Private Google Workspace documents require either public export access or
 `GOOGLE_DOCS_BEARER_TOKEN` with permission to read the document.
+
+Directory input is first-class. doc2graph walks supported document formats,
+skips common generated folders such as `.git`, `node_modules`, `dist`, and
+`build`, and emits a corpus root plus folder/file nodes linked to each extracted
+document graph:
+
+```bash
+doc2graph ./knowledge-base --graph all --output corpus.graph.json
+doc2graph ./knowledge-base --graph decision --include "adr/**" --output adr.graph.json
+doc2graph ./exports --graph all --max-files 500 --max-file-bytes 10485760
+```
+
+Large corpora are handled by deterministic limits:
+
+- `--max-files N`: stop after N supported files.
+- `--max-file-bytes N`: skip very large individual files and add a `skipped_file` node.
+- `--max-file-bytes -1`: disable the per-file size guard.
+- `--no-recursive`: only process files directly under the directory.
+- `--include` / `--exclude`: repeatable glob filters for folder subsets.
 
 Outputs are plain JSON:
 
@@ -128,6 +149,7 @@ from doc2graph import DocumentGraph, extract_knowledge_graph, extract_decision_g
 
 g = DocumentGraph.from_document("paper.md", graph_type="knowledge")
 decisions = DocumentGraph.from_document("adr.md", graph_type="decision")
+corpus = DocumentGraph.from_directory("./docs", graph_type="all")
 ```
 
 ### Load from multiple files

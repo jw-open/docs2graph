@@ -2,6 +2,7 @@ import json
 
 from doc2graph import DocumentGraph, extract_decision_graph, extract_knowledge_graph
 from doc2graph.cli import build_graph, main
+from doc2graph.corpus import build_corpus_graph
 
 
 PAPER = """# Abstract
@@ -94,3 +95,40 @@ def test_cli_writes_graph_json(tmp_path):
     assert rc == 0
     assert payload["nodes"]
     assert payload["edges"]
+
+
+def test_build_graph_from_directory_corpus(tmp_path):
+    docs = tmp_path / "docs"
+    nested = docs / "architecture"
+    nested.mkdir(parents=True)
+    (docs / "paper.md").write_text(PAPER, encoding="utf-8")
+    (nested / "adr.md").write_text(DECISION, encoding="utf-8")
+    (docs / "ignored.bin").write_bytes(b"\x00\x01")
+
+    graph = build_graph(str(docs), graph_type="all")
+    node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
+    labels = {e["label"] for e in graph["edges"]}
+
+    assert graph["current_node_id"].startswith("corpus:")
+    assert "corpus" in node_types
+    assert "folder" in node_types
+    assert "file" in node_types
+    assert "claim" in node_types
+    assert "decision" in node_types
+    assert "extracted_as" in labels
+
+
+def test_directory_corpus_skips_large_files(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "small.md").write_text("# Small\n\nThis document describes something.", encoding="utf-8")
+    (docs / "large.md").write_text("x" * 20, encoding="utf-8")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_file_bytes=10,
+    )
+    node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
+
+    assert "skipped_file" in node_types

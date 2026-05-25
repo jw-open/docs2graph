@@ -11,10 +11,15 @@ from .extractors.decision import extract_decision_graph
 from .extractors.knowledge import extract_knowledge_graph
 from .extractors.media import extract_media_graph, is_media_path
 from .extractors.schema import extract_schema_graph
+from .corpus import build_corpus_graph
 from .loaders.auto import load_document
 
 
 def build_graph(path: str, graph_type: str = "knowledge") -> Dict[str, Any]:
+    return build_corpus_graph(path, graph_type=graph_type)
+
+
+def build_file_graph(path: str, graph_type: str = "knowledge") -> Dict[str, Any]:
     text = load_document(path)
     if graph_type == "knowledge":
         return extract_knowledge_graph(text, source=path)
@@ -37,8 +42,8 @@ def build_graph(path: str, graph_type: str = "knowledge") -> Dict[str, Any]:
 
 
 def main(argv: List[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Extract graphs from papers and documentation.")
-    parser.add_argument("path", help="Document path")
+    parser = argparse.ArgumentParser(description="Extract graphs from papers, documentation, and document corpora.")
+    parser.add_argument("path", help="Document path, URL, or directory")
     parser.add_argument(
         "--graph",
         choices=["knowledge", "decision", "schema", "media", "all"],
@@ -47,9 +52,36 @@ def main(argv: List[str] | None = None) -> int:
     )
     parser.add_argument("--output", "-o", help="Write JSON graph to this path")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
+    parser.add_argument("--no-recursive", action="store_true", help="Do not recurse into subdirectories")
+    parser.add_argument("--max-files", type=int, help="Maximum number of files to process from a directory")
+    parser.add_argument(
+        "--max-file-bytes",
+        type=int,
+        default=25 * 1024 * 1024,
+        help="Skip individual directory files larger than this many bytes; set -1 to disable",
+    )
+    parser.add_argument(
+        "--include",
+        action="append",
+        help="Directory include glob, relative to corpus root; may be repeated",
+    )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        help="Directory exclude glob or name; may be repeated",
+    )
     args = parser.parse_args(argv)
 
-    graph = build_graph(args.path, args.graph)
+    max_file_bytes = None if args.max_file_bytes < 0 else args.max_file_bytes
+    graph = build_corpus_graph(
+        args.path,
+        args.graph,
+        recursive=not args.no_recursive,
+        max_files=args.max_files,
+        max_file_bytes=max_file_bytes,
+        include=args.include,
+        exclude=args.exclude,
+    )
     payload = json.dumps(graph, indent=2 if args.pretty else None, sort_keys=args.pretty)
     if args.output:
         Path(args.output).write_text(payload + "\n", encoding="utf-8")
