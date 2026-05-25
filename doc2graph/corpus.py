@@ -242,6 +242,7 @@ def build_corpus_graph(
         "hits": 0,
         "misses": 0,
         "writes": 0,
+        "metadata_updates": 0,
         "content_digest_hits": 0,
         "content_digest_misses": 0,
         "pruned": 0,
@@ -315,6 +316,7 @@ def build_corpus_graph(
         "cache_hits": cache_stats["hits"],
         "cache_misses": cache_stats["misses"],
         "cache_writes": cache_stats["writes"],
+        "cache_metadata_updates": cache_stats["metadata_updates"],
         "cache_content_digest_hits": cache_stats["content_digest_hits"],
         "cache_content_digest_misses": cache_stats["content_digest_misses"],
         "cache_pruned": cache_stats["pruned"],
@@ -499,12 +501,15 @@ def build_corpus_graph(
             if cache_path is not None and not refresh_cache:
                 if (
                     isinstance(cached, dict)
-                    and cached.get("metadata") == metadata
+                    and _cache_metadata_matches(cached.get("metadata"), metadata)
                     and isinstance(cached.get("graph"), dict)
                 ):
                     graph = cached.get("graph")
                     cache_stats["hits"] += 1
                     attrs["cache_status"] = "hit"
+                    if cached.get("metadata") != metadata:
+                        cached["metadata"] = metadata
+                        cache_stats["metadata_updates"] += 1
 
             if graph is None:
                 if cache_path is not None:
@@ -601,6 +606,7 @@ def build_corpus_graph(
     manifest_attrs["cache_hits"] = cache_stats["hits"]
     manifest_attrs["cache_misses"] = cache_stats["misses"]
     manifest_attrs["cache_writes"] = cache_stats["writes"]
+    manifest_attrs["cache_metadata_updates"] = cache_stats["metadata_updates"]
     manifest_attrs["cache_content_digest_hits"] = cache_stats["content_digest_hits"]
     manifest_attrs["cache_content_digest_misses"] = cache_stats["content_digest_misses"]
     nodes[0]["attributes"]["skipped_file_count"] = scan.skipped_count
@@ -1355,6 +1361,37 @@ def _file_metadata(
         "content_sha256_reused": content_sha256_reused,
         "suffix": path.suffix.lower(),
     }
+
+
+_CACHE_MATCH_METADATA_KEYS = (
+    "root",
+    "relative_path",
+    "graph_type",
+    "extraction_fingerprint",
+    "loader_dependencies",
+    "size_bytes",
+    "content_sha256",
+    "suffix",
+)
+
+
+def _cache_metadata_matches(
+    cached_metadata: Any,
+    current_metadata: Dict[str, Any],
+) -> bool:
+    """
+    Return whether a cached graph was built from the same deterministic inputs.
+
+    Filesystem stat fields are kept in metadata so unchanged files can avoid a
+    content hash, but mtime/ctime/inode alone should not invalidate a graph once
+    the content digest and extractor inputs match.
+    """
+    if not isinstance(cached_metadata, dict):
+        return False
+    return all(
+        cached_metadata.get(key) == current_metadata.get(key)
+        for key in _CACHE_MATCH_METADATA_KEYS
+    )
 
 
 def _file_sha256(path: Path) -> str:

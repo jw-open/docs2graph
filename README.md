@@ -144,7 +144,10 @@ Large corpora are handled by deterministic limits:
   deterministic fingerprint of the loader and extractor code that can affect
   per-file graph output and a SHA-256 digest of the source file content, so
   stale entries are rebuilt after doc2graph changes or file edits even when
-  size and mtime metadata are unchanged. Cache entries for optional parser
+  size and mtime metadata are unchanged. Cache hits are validated from stable
+  extraction inputs and content SHA-256, so metadata-only touches do not force
+  rebuilds; when only stat fields changed, doc2graph refreshes the cached
+  metadata and reports this as `cache_metadata_updates`. Cache entries for optional parser
   stacks also record the relevant installed package versions, such as
   `pypdf`, `pdf2image`, `pytesseract`, `Pillow`, `python-docx`, or
   `python-pptx`, so PDF, OCR, DOCX, and PPTX entries refresh when their
@@ -189,7 +192,7 @@ and citation provenance.
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, total selected bytes, a deterministic selected-path ordering contract,
 and SHA-256 digests for selected paths and selected file records,
-skipped-file counts, a deterministic skipped-record digest, cache hit/miss/write counts when caching is
+skipped-file counts, a deterministic skipped-record digest, cache hit/miss/write/update counts when caching is
 enabled, the content-digest and extraction fingerprint validation used for
 cache entries,
 the cache load status and before/after cache entry counts,

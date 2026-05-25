@@ -1516,6 +1516,40 @@ def test_directory_corpus_reuses_cached_content_digests_for_unchanged_files(tmp_
     assert manifest["attributes"]["cache_content_digest_misses"] == 0
 
 
+def test_directory_corpus_cache_hits_when_only_stat_metadata_changes(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    source = docs / "a.md"
+    source.write_text("# A\n\nAlpha document.", encoding="utf-8")
+
+    build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    cached_before = json.loads(cache.read_text(encoding="utf-8"))
+    before_entry = next(iter(cached_before["entries"].values()))
+    before_mtime_ns = before_entry["metadata"]["mtime_ns"]
+    before_ctime_ns = before_entry["metadata"]["ctime_ns"]
+
+    time.sleep(0.05)
+    os.utime(source, None)
+    second = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    manifest = next(n for n in second["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    cached_after = json.loads(cache.read_text(encoding="utf-8"))
+    after_entry = next(iter(cached_after["entries"].values()))
+
+    assert manifest["attributes"]["cache_hits"] == 1
+    assert manifest["attributes"]["cache_misses"] == 0
+    assert manifest["attributes"]["cache_writes"] == 0
+    assert manifest["attributes"]["cache_metadata_updates"] == 1
+    assert manifest["attributes"]["cache_content_digest_hits"] == 0
+    assert manifest["attributes"]["cache_content_digest_misses"] == 1
+    assert after_entry["metadata"]["content_sha256"] == before_entry["metadata"]["content_sha256"]
+    assert (
+        after_entry["metadata"]["mtime_ns"] != before_mtime_ns
+        or after_entry["metadata"]["ctime_ns"] != before_ctime_ns
+    )
+
+
 def test_directory_corpus_reports_invalid_cache_json_and_rebuilds(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
