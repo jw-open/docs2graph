@@ -193,10 +193,18 @@ def build_corpus_graph(
         reserved_paths=reserved_paths,
     )
     files = scan.files
-    cache = _load_cache(cache_path) if cache_path is not None else _empty_cache()
+    cache_load = (
+        _load_cache_with_status(cache_path)
+        if cache_path is not None
+        else CacheLoad(cache=_empty_cache(), status="disabled", entry_count=0)
+    )
+    cache = cache_load.cache
     cache_stats = {
         "enabled": cache_path is not None,
         "path": str(cache_path) if cache_path is not None else None,
+        "load_status": cache_load.status,
+        "entry_count_before": cache_load.entry_count,
+        "entry_count_after": cache_load.entry_count,
         "hits": 0,
         "misses": 0,
         "writes": 0,
@@ -244,6 +252,15 @@ def build_corpus_graph(
         "extraction_method": "static",
         "cache_enabled": cache_stats["enabled"],
         "cache_path": cache_stats["path"],
+        "cache_load_status": cache_stats["load_status"]
+        if cache_stats["enabled"]
+        else None,
+        "cache_entry_count_before": cache_stats["entry_count_before"]
+        if cache_stats["enabled"]
+        else None,
+        "cache_entry_count_after": cache_stats["entry_count_after"]
+        if cache_stats["enabled"]
+        else None,
         "cache_validation": "content_sha256" if cache_stats["enabled"] else None,
         "cache_extraction_fingerprint": _extraction_fingerprint(graph_type)
         if cache_stats["enabled"]
@@ -499,6 +516,8 @@ def build_corpus_graph(
     if cache_path is not None:
         cache_stats["pruned"] = _prune_cache(cache, root, graph_type, active_cache_keys)
         manifest_attrs["cache_pruned"] = cache_stats["pruned"]
+        cache_stats["entry_count_after"] = _cache_entry_count(cache)
+        manifest_attrs["cache_entry_count_after"] = cache_stats["entry_count_after"]
         manifest_attrs["cache_file_updated"] = _write_cache(cache_path, cache)
     merged = _merge_graphs([corpus_graph, *graph_parts])
     cross_document_link_count = _add_corpus_cross_document_links(merged)
@@ -524,6 +543,13 @@ class CorpusScan:
     scanned_entry_count: int = 0
     scan_truncated: bool = False
     skipped_records_digest: Any = field(default_factory=hashlib.sha256)
+
+
+@dataclass(frozen=True)
+class CacheLoad:
+    cache: Dict[str, Any]
+    status: str
+    entry_count: int
 
 
 def scan_document_files(
@@ -1081,18 +1107,29 @@ def _empty_cache() -> Dict[str, Any]:
 
 
 def _load_cache(cache_path: str | Path | None) -> Dict[str, Any]:
+    return _load_cache_with_status(cache_path).cache
+
+
+def _load_cache_with_status(cache_path: str | Path | None) -> CacheLoad:
     if cache_path is None:
-        return _empty_cache()
+        return CacheLoad(cache=_empty_cache(), status="disabled", entry_count=0)
     path = Path(cache_path)
     if not path.exists():
-        return _empty_cache()
+        return CacheLoad(cache=_empty_cache(), status="missing", entry_count=0)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return _empty_cache()
+    except json.JSONDecodeError:
+        return CacheLoad(cache=_empty_cache(), status="invalid_json", entry_count=0)
+    except OSError:
+        return CacheLoad(cache=_empty_cache(), status="read_error", entry_count=0)
     if payload.get("version") != 1 or not isinstance(payload.get("entries"), dict):
-        return _empty_cache()
-    return payload
+        return CacheLoad(cache=_empty_cache(), status="invalid_schema", entry_count=0)
+    return CacheLoad(cache=payload, status="loaded", entry_count=_cache_entry_count(payload))
+
+
+def _cache_entry_count(cache: Dict[str, Any]) -> int:
+    entries = cache.get("entries")
+    return len(entries) if isinstance(entries, dict) else 0
 
 
 def _write_cache(cache_path: str | Path, cache: Dict[str, Any]) -> bool:

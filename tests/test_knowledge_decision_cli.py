@@ -1013,6 +1013,12 @@ def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
     assert refreshed_manifest["attributes"]["cache_misses"] == 2
     assert refreshed_manifest["attributes"]["cache_writes"] == 2
     assert refreshed_manifest["attributes"]["cache_file_updated"] is False
+    assert first_manifest["attributes"]["cache_load_status"] == "missing"
+    assert first_manifest["attributes"]["cache_entry_count_before"] == 0
+    assert first_manifest["attributes"]["cache_entry_count_after"] == 2
+    assert second_manifest["attributes"]["cache_load_status"] == "loaded"
+    assert second_manifest["attributes"]["cache_entry_count_before"] == 2
+    assert second_manifest["attributes"]["cache_entry_count_after"] == 2
     assert {
         n["attributes"]["relative_path"]: n["attributes"]["cache_status"]
         for n in second["nodes"]
@@ -1023,6 +1029,47 @@ def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
         for n in refreshed["nodes"]
         if n.get("attributes", {}).get("type") == "file"
     } == {"a.md": "refresh", "b.md": "refresh"}
+
+
+def test_directory_corpus_reports_invalid_cache_json_and_rebuilds(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    cache.write_text("{not-json", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+
+    assert manifest["attributes"]["cache_load_status"] == "invalid_json"
+    assert manifest["attributes"]["cache_entry_count_before"] == 0
+    assert manifest["attributes"]["cache_entry_count_after"] == 1
+    assert manifest["attributes"]["cache_hits"] == 0
+    assert manifest["attributes"]["cache_misses"] == 1
+    assert manifest["attributes"]["cache_writes"] == 1
+    assert payload["version"] == 1
+    assert len(payload["entries"]) == 1
+
+
+def test_directory_corpus_reports_invalid_cache_schema_and_rebuilds(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    cache.write_text(json.dumps({"version": 999, "entries": []}), encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+
+    assert manifest["attributes"]["cache_load_status"] == "invalid_schema"
+    assert manifest["attributes"]["cache_entry_count_before"] == 0
+    assert manifest["attributes"]["cache_entry_count_after"] == 1
+    assert payload["version"] == 1
+    assert len(payload["entries"]) == 1
 
 
 def test_directory_corpus_marks_failed_file_status_and_manifest(tmp_path, monkeypatch):
