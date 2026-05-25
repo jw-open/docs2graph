@@ -89,6 +89,26 @@ The team needs a repeatable ingestion strategy.
 """
 
 
+ADR_STATUS_DECISION = """# Status
+
+Accepted
+
+# Decision Drivers
+
+- Must run offline.
+- Must produce deterministic graph JSON.
+
+# Considered Options
+
+- Static extraction
+- Hosted summarization
+
+# Decision
+
+Choose static extraction.
+"""
+
+
 def _skip_records_sha256(records):
     digest = hashlib.sha256()
     for reason, path_type, relative_path in records:
@@ -298,6 +318,22 @@ def test_extract_decision_graph_from_option_table():
         for e in graph["edges"]
     )
     assert high_confidence["attributes"]["confidence_value"] == "High"
+
+
+def test_extract_decision_graph_classifies_adr_status_and_drivers():
+    graph = extract_decision_graph(ADR_STATUS_DECISION, source="adr-status.md")
+    status = next(n for n in graph["nodes"] if n["label"] == "Status")
+    drivers = next(n for n in graph["nodes"] if n["label"] == "Decision Drivers")
+    decision_nodes = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "decision"
+    ]
+
+    assert status["attributes"]["type"] == "decision"
+    assert status["attributes"]["decision_status"] == "accepted"
+    assert drivers["attributes"]["type"] == "context"
+    assert any(n["label"] == "Decision" for n in decision_nodes)
 
 
 def test_build_graph_and_document_graph_from_document(tmp_path):

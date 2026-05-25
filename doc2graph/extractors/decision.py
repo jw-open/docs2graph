@@ -14,15 +14,49 @@ _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\
 
 _SECTION_TYPES = {
     "problem": ("problem", "challenge", "motivation", "issue"),
-    "context": ("context", "background", "goals", "requirements", "constraints"),
+    "context": (
+        "context",
+        "background",
+        "goal",
+        "goals",
+        "requirement",
+        "requirements",
+        "constraint",
+        "constraints",
+        "driver",
+        "drivers",
+        "decision driver",
+        "decision drivers",
+    ),
     "option": ("option", "alternative", "approach", "solution"),
     "pros": ("pros", "benefits", "advantages"),
     "cons": ("cons", "drawbacks", "disadvantages"),
     "tradeoff": ("tradeoff", "trade-off", "consideration"),
-    "decision": ("decision", "selected", "chosen", "resolution"),
+    "decision": (
+        "decision",
+        "status",
+        "accepted",
+        "proposed",
+        "rejected",
+        "deprecated",
+        "superseded",
+        "deferred",
+        "selected",
+        "chosen",
+        "resolution",
+    ),
     "consequence": ("consequence", "consequences", "impact", "outcome", "outcomes", "result", "risks"),
     "confidence": ("confidence", "certainty", "confidence level"),
 }
+
+_DECISION_STATUS_VALUES = (
+    "accepted",
+    "proposed",
+    "rejected",
+    "deprecated",
+    "superseded",
+    "deferred",
+)
 
 
 def extract_decision_graph(text: str, source: str = "") -> GraphDict:
@@ -56,13 +90,18 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
     for index, section in enumerate(sections):
         kind = _classify(section["title"], section["content"])
         section_id = _source_node_id(kind, f"{index}-{section['title']}", source)
-        _add_node(nodes, seen_nodes, section_id, section["title"], section["content"], {
+        attrs = {
             "type": kind,
             "level": section["level"],
             "source": source,
             "document_id": root_id,
             "extraction_method": "static",
-        })
+        }
+        if kind == "decision":
+            status = _decision_status(section["title"], section["content"])
+            if status:
+                attrs["decision_status"] = status
+        _add_node(nodes, seen_nodes, section_id, section["title"], section["content"], attrs)
         _add_edge(edges, seen_edges, root_id, section_id, "contains")
 
         if kind == "problem":
@@ -116,13 +155,18 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
         for bullet_index, bullet in enumerate(_BULLET_RE.findall(section["content"])):
             bullet_kind = _classify_bullet(bullet, default=kind)
             bullet_id = _source_node_id(bullet_kind, f"{index}-{bullet_index}-{bullet}", source)
-            _add_node(nodes, seen_nodes, bullet_id, _label(bullet), bullet, {
+            attrs = {
                 "type": bullet_kind,
                 "source": source,
                 "document_id": root_id,
                 "section": section["title"],
                 "extraction_method": "static",
-            })
+            }
+            if bullet_kind == "decision":
+                status = _decision_status("", bullet)
+                if status:
+                    attrs["decision_status"] = status
+            _add_node(nodes, seen_nodes, bullet_id, _label(bullet), bullet, attrs)
             _add_edge(edges, seen_edges, section_id, bullet_id, "contains")
 
             if bullet_kind == "problem":
@@ -202,13 +246,23 @@ def _classify_bullet(text: str, default: str) -> str:
         return "cons"
     if "tradeoff" in lower or "trade-off" in lower or "but " in lower:
         return "tradeoff"
-    if lower.startswith(("decide", "decision:", "choose", "chosen", "selected:", "status: accepted")):
+    if lower.startswith(("decide", "decision:", "choose", "chosen", "selected:", "status:")):
+        return "decision"
+    if _decision_status("", text):
         return "decision"
     if lower.startswith(("consequence:", "impact:", "result:", "risk:")):
         return "consequence"
     if lower.startswith(("confidence:", "certainty:", "confidence level:")):
         return "confidence"
     return default
+
+
+def _decision_status(title: str, content: str) -> Optional[str]:
+    text = f"{title}\n{content}".lower()
+    for status in _DECISION_STATUS_VALUES:
+        if re.search(r"(?<![a-z0-9])" + re.escape(status) + r"(?![a-z0-9])", text):
+            return status
+    return None
 
 
 def _extract_markdown_tables(text: str) -> List[List[Dict[str, str]]]:
@@ -353,7 +407,7 @@ def _add_decision_table(
         decision_value = row.get("decision", "").strip()
         if decision_value and _is_positive_decision_cell(decision_value):
             decision_id = _source_node_id("decision", f"table-{row_key}-decision-{decision_value}", source)
-            _add_node(nodes, seen_nodes, decision_id, _label(decision_value), decision_value, {
+            attrs = {
                 "type": "decision",
                 "source": source,
                 "document_id": root_id,
@@ -362,7 +416,11 @@ def _add_decision_table(
                 "table_index": table_index,
                 "row_index": row_index,
                 "extraction_method": "static",
-            })
+            }
+            status = _decision_status("", decision_value)
+            if status:
+                attrs["decision_status"] = status
+            _add_node(nodes, seen_nodes, decision_id, _label(decision_value), decision_value, attrs)
             _add_edge(edges, seen_edges, section_id, decision_id, "contains")
             if last_problem_id:
                 _add_edge(edges, seen_edges, last_problem_id, decision_id, "resolved_by")
