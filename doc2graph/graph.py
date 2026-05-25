@@ -98,9 +98,17 @@ class DocumentGraph:
         return cls.from_dict(graph)
 
     @classmethod
-    def from_directory(cls, path: str, graph_type: str = "knowledge") -> "DocumentGraph":
+    def from_directory(
+        cls,
+        path: str,
+        graph_type: str = "knowledge",
+        **corpus_options: Any,
+    ) -> "DocumentGraph":
         """Build one DocumentGraph from a directory of mixed document files."""
-        return cls.from_document(path, graph_type=graph_type)
+        from .corpus import build_corpus_graph
+
+        graph = build_corpus_graph(path, graph_type=graph_type, **corpus_options)
+        return cls.from_dict(graph)
 
     @classmethod
     def from_texts(cls, texts: List[Dict[str, str]]) -> "DocumentGraph":

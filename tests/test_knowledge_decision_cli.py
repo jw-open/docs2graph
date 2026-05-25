@@ -310,6 +310,61 @@ def test_directory_corpus_stops_after_total_byte_budget_is_reached(tmp_path):
     assert skipped_paths == ["b.md", "c.md"]
 
 
+def test_directory_corpus_limits_recursion_depth(tmp_path):
+    docs = tmp_path / "docs"
+    shallow = docs / "shallow"
+    deep = shallow / "deep"
+    deep.mkdir(parents=True)
+    (docs / "root.md").write_text("# Root\n\nRoot document.", encoding="utf-8")
+    (shallow / "a.md").write_text("# A\n\nShallow document.", encoding="utf-8")
+    (deep / "b.md").write_text("# B\n\nDeep document.", encoding="utf-8")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_depth=1,
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "max_depth_exceeded"
+    ]
+
+    assert manifest["attributes"]["max_depth"] == 1
+    assert manifest["attributes"]["max_depth_reached"] is True
+    assert manifest["attributes"]["skipped_by_reason"] == {"max_depth_exceeded": 1}
+    assert file_paths == ["root.md", "shallow/a.md"]
+    assert skipped[0]["attributes"]["path_type"] == "directory"
+    assert skipped[0]["attributes"]["relative_path"] == "shallow/deep"
+
+
+def test_document_graph_from_directory_accepts_corpus_options(tmp_path):
+    docs = tmp_path / "docs"
+    deep = docs / "deep"
+    deep.mkdir(parents=True)
+    (docs / "root.md").write_text("# Root\n\nRoot document.", encoding="utf-8")
+    (deep / "hidden.md").write_text("# Hidden\n\nDeep document.", encoding="utf-8")
+
+    graph = DocumentGraph.from_directory(str(docs), graph_type="knowledge", max_depth=0).to_dict()
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+
+    assert manifest["attributes"]["max_depth_reached"] is True
+    assert file_paths == ["root.md"]
+
+
 def test_directory_scan_prunes_default_ignored_directories(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()

@@ -77,6 +77,7 @@ doc2graph ./knowledge-base --graph all --output corpus.graph.json
 doc2graph ./knowledge-base --graph decision --include "adr/**" --output adr.graph.json
 doc2graph ./exports --graph all --max-files 500 --max-file-bytes 10485760
 doc2graph ./exports --graph all --max-total-bytes 1073741824 --output corpus.graph.json
+doc2graph ./exports --graph all --max-depth 2 --output corpus.graph.json
 doc2graph ./exports --graph all --skip-report-limit 25 --output corpus.graph.json
 doc2graph ./exports --graph all --cache .doc2graph-cache.json --output corpus.graph.json
 ```
@@ -90,6 +91,8 @@ Large corpora are handled by deterministic limits:
   byte budget is reached and report remaining files as skipped.
 - `--max-total-bytes -1`: disable the cumulative byte guard.
 - `--no-recursive`: only process files directly under the directory.
+- `--max-depth N`: bound recursive descent by subdirectory depth; `0` keeps
+  only files directly under the corpus root and reports pruned directories.
 - `--include` / `--exclude`: repeatable glob filters for folder subsets.
 - `--skip-report-limit N`: cap the total number of omitted files listed as
   `skipped_file` or extraction-error nodes while still preserving aggregate
@@ -103,7 +106,8 @@ counts, skipped-file counts, cache hit/miss/write counts when caching is
 enabled, stale cache entries pruned for the current root and graph type,
 extracted-file byte counts, and skip reasons such as unsupported extensions,
 max-file limits, cumulative byte limits, oversized files,
-symlinked directories, inaccessible paths, and per-file extraction errors. This
+depth-pruned directories, symlinked directories, inaccessible paths, and
+per-file extraction errors. This
 keeps large mixed-folder runs deterministic and auditable without requiring all
 omitted paths to be materialized as graph nodes.
 
@@ -171,6 +175,7 @@ from doc2graph import DocumentGraph, extract_knowledge_graph, extract_decision_g
 g = DocumentGraph.from_document("paper.md", graph_type="knowledge")
 decisions = DocumentGraph.from_document("adr.md", graph_type="decision")
 corpus = DocumentGraph.from_directory("./docs", graph_type="all")
+bounded = DocumentGraph.from_directory("./docs", graph_type="all", max_depth=2)
 ```
 
 ### Load from multiple files

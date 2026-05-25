@@ -55,6 +55,11 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--no-recursive", action="store_true", help="Do not recurse into subdirectories")
     parser.add_argument("--max-files", type=int, help="Maximum number of files to process from a directory")
     parser.add_argument(
+        "--max-depth",
+        type=int,
+        help="Maximum directory depth to descend when processing a directory; 0 means root files only",
+    )
+    parser.add_argument(
         "--max-file-bytes",
         type=int,
         default=25 * 1024 * 1024,
@@ -103,6 +108,7 @@ def main(argv: List[str] | None = None) -> int:
         args.graph,
         recursive=not args.no_recursive,
         max_files=args.max_files,
+        max_depth=args.max_depth,
         max_file_bytes=max_file_bytes,
         max_total_bytes=max_total_bytes,
         include=args.include,

@@ -60,6 +60,7 @@ def build_corpus_graph(
     *,
     recursive: bool = True,
     max_files: int | None = None,
+    max_depth: int | None = None,
     max_file_bytes: int | None = 25 * 1024 * 1024,
     max_total_bytes: int | None = None,
     include: Sequence[str] | None = None,
@@ -87,6 +88,7 @@ def build_corpus_graph(
         include=include,
         exclude=exclude,
         max_files=max_files,
+        max_depth=max_depth,
         skip_report_limit=skip_report_limit,
     )
     files = scan.files
@@ -112,6 +114,8 @@ def build_corpus_graph(
         "skip_report_limit": skip_report_limit,
         "max_files": max_files,
         "max_files_reached": scan.skipped_by_reason.get("max_files_exceeded", 0) > 0,
+        "max_depth": max_depth,
+        "max_depth_reached": scan.skipped_by_reason.get("max_depth_exceeded", 0) > 0,
         "max_file_bytes": max_file_bytes,
         "max_total_bytes": max_total_bytes,
         "max_total_bytes_reached": False,
@@ -350,6 +354,7 @@ def scan_document_files(
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
     max_files: int | None = None,
+    max_depth: int | None = None,
     skip_report_limit: int = 100,
 ) -> CorpusScan:
     """Scan ``root`` for supported documents and bounded skipped-file metadata."""
@@ -362,6 +367,7 @@ def scan_document_files(
         root,
         recursive=recursive,
         excludes=excludes,
+        max_depth=max_depth,
         scan=result,
         report_limit=report_limit,
     ):
@@ -386,6 +392,7 @@ def iter_document_files(
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
     max_files: int | None = None,
+    max_depth: int | None = None,
 ) -> Iterable[Path]:
     """Yield supported document files under ``root`` in deterministic order."""
     scan = scan_document_files(
@@ -394,6 +401,7 @@ def iter_document_files(
         include=include,
         exclude=exclude,
         max_files=max_files,
+        max_depth=max_depth,
         skip_report_limit=0,
     )
     yield from scan.files
@@ -404,6 +412,7 @@ def _iter_candidate_files(
     *,
     recursive: bool,
     excludes: Sequence[str],
+    max_depth: int | None = None,
     scan: CorpusScan | None = None,
     report_limit: int = 0,
 ) -> Iterable[Path]:
@@ -426,10 +435,22 @@ def _iter_candidate_files(
             continue
         if path_kind == "directory":
             if recursive:
+                if max_depth is not None and _relative_depth(root, path) > max_depth:
+                    if scan is not None:
+                        _record_skipped(
+                            scan,
+                            path,
+                            rel,
+                            "max_depth_exceeded",
+                            report_limit,
+                            path_type="directory",
+                        )
+                    continue
                 yield from _iter_candidate_files_for_child(
                     root,
                     path,
                     excludes,
+                    max_depth=max_depth,
                     scan=scan,
                     report_limit=report_limit,
                 )
@@ -447,6 +468,7 @@ def _iter_candidate_files_for_child(
     folder: Path,
     excludes: Sequence[str],
     *,
+    max_depth: int | None = None,
     scan: CorpusScan | None = None,
     report_limit: int = 0,
 ) -> Iterable[Path]:
@@ -468,10 +490,22 @@ def _iter_candidate_files_for_child(
                 _record_skipped(scan, path, rel, "symlink_directory", report_limit, path_type="directory")
             continue
         if path_kind == "directory":
+            if max_depth is not None and _relative_depth(root, path) > max_depth:
+                if scan is not None:
+                    _record_skipped(
+                        scan,
+                        path,
+                        rel,
+                        "max_depth_exceeded",
+                        report_limit,
+                        path_type="directory",
+                    )
+                continue
             yield from _iter_candidate_files_for_child(
                 root,
                 path,
                 excludes,
+                max_depth=max_depth,
                 scan=scan,
                 report_limit=report_limit,
             )
@@ -548,6 +582,10 @@ def _safe_size(path: Path) -> int | None:
         return path.stat().st_size
     except OSError:
         return None
+
+
+def _relative_depth(root: Path, path: Path) -> int:
+    return len(path.relative_to(root).parts)
 
 
 def _file_metadata(root: Path, path: Path, graph_type: str) -> Dict[str, Any]:
