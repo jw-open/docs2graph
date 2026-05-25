@@ -87,6 +87,7 @@ doc2graph ./exports --graph all --max-files 500 --stop-after-max-files
 doc2graph ./exports --graph all --max-total-bytes 1073741824 --output corpus.graph.json
 doc2graph ./exports --graph all --max-depth 2 --output corpus.graph.json
 doc2graph ./exports --graph all --max-scan-entries 100000 --output corpus.graph.json
+doc2graph ./exports --graph all --max-cross-document-links 50000 --output corpus.graph.json
 doc2graph ./exports --graph all --skip-report-limit 25 --output corpus.graph.json
 doc2graph ./exports --graph all --cache .doc2graph-cache.json --output corpus.graph.json
 ```
@@ -125,6 +126,11 @@ Large corpora are handled by deterministic limits:
   skip counts and a deterministic SHA-256 digest of skipped path records. The
   corpus manifest reports how many skips were materialized as nodes, how many
   were omitted by this cap, and whether the skip report was truncated.
+- `--max-cross-document-links N`: cap the deterministic cross-document
+  `mentions` edges added after per-file graphs are merged. This bounds the
+  corpus-wide linking pass for very large trees while preserving deterministic
+  edge order. The manifest reports `cross_document_link_limit_reached` when
+  additional candidate links were omitted by the cap.
 - `--cache PATH`: opt into a JSON cache that reuses unchanged per-file graph
   extraction across repeated corpus runs. If the cache file is inside the
   scanned corpus directory, doc2graph reserves it as an output artifact and
@@ -180,7 +186,8 @@ whether cache pruning was safe for the current selection,
 whether the cache file was actually updated,
 content-digest reuse hit/miss counts for warm cache validation,
 cache write status and write errors when an explicit cache path cannot be updated,
-the number of deterministic cross-document mention links added,
+the number of deterministic cross-document mention links added and whether an
+explicit cross-document link cap was reached,
 active include/exclude patterns, extracted-file byte counts, scan budget state,
 whether a max-files limit intentionally truncated traversal,
 failed-file counts, and skip reasons

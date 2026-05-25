@@ -419,6 +419,46 @@ def test_directory_corpus_adds_cross_document_links_for_named_sections(tmp_path)
     assert cross_links
 
 
+def test_directory_corpus_can_bound_cross_document_links(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    alpha = docs / "alpha.md"
+    beta = docs / "beta.md"
+    gamma = docs / "gamma.md"
+    alpha.write_text(
+        "# Alpha Plan\n\nCoordinate with the Beta Strategy and Gamma Playbook.",
+        encoding="utf-8",
+    )
+    beta.write_text("# Beta Strategy\n\nRelease sequencing.", encoding="utf-8")
+    gamma.write_text("# Gamma Playbook\n\nLaunch checklist.", encoding="utf-8")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_cross_document_links=1,
+    )
+
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    node_sources = {
+        n["id"]: n.get("attributes", {}).get("source")
+        for n in graph["nodes"]
+        if n.get("id")
+    }
+    cross_links = [
+        e
+        for e in graph["edges"]
+        if e["label"] == "mentions"
+        and node_sources.get(e["from"])
+        and node_sources.get(e["to"])
+        and node_sources[e["from"]] != node_sources[e["to"]]
+    ]
+
+    assert manifest["attributes"]["max_cross_document_links"] == 1
+    assert manifest["attributes"]["cross_document_link_count"] == 1
+    assert manifest["attributes"]["cross_document_link_limit_reached"] is True
+    assert len(cross_links) == 1
+
+
 def test_directory_corpus_avoids_generic_heading_cross_document_links(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -923,6 +963,34 @@ def test_cli_accepts_stop_after_max_files(tmp_path):
     assert manifest["attributes"]["max_files"] == 1
     assert manifest["attributes"]["stop_after_max_files"] is True
     assert manifest["attributes"]["max_files_scan_truncated"] is True
+
+
+def test_cli_accepts_max_cross_document_links(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    output = tmp_path / "graph.json"
+    (docs / "a.md").write_text("# Alpha Plan\n\nSee Beta Strategy.", encoding="utf-8")
+    (docs / "b.md").write_text("# Beta Strategy\n\nRelease sequencing.", encoding="utf-8")
+
+    exit_code = main(
+        [
+            str(docs),
+            "--graph",
+            "knowledge",
+            "--max-cross-document-links",
+            "0",
+            "--output",
+            str(output),
+        ]
+    )
+
+    graph = json.loads(output.read_text(encoding="utf-8"))
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+
+    assert exit_code == 0
+    assert manifest["attributes"]["max_cross_document_links"] == 0
+    assert manifest["attributes"]["cross_document_link_count"] == 0
+    assert manifest["attributes"]["cross_document_link_limit_reached"] is True
 
 
 def test_document_graph_from_directory_accepts_corpus_options(tmp_path):

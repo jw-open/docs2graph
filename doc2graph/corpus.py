@@ -165,6 +165,7 @@ def build_corpus_graph(
     cache_path: str | Path | None = None,
     output_path: str | Path | None = None,
     refresh_cache: bool = False,
+    max_cross_document_links: int | None = None,
 ) -> Dict[str, Any]:
     """Build one graph from a file, URL, or directory corpus."""
     from .loaders.url import is_url
@@ -178,6 +179,9 @@ def build_corpus_graph(
         return build_file_graph(str(root), graph_type)
     if not root.is_dir():
         raise FileNotFoundError(path)
+
+    if max_cross_document_links is not None and max_cross_document_links < 0:
+        max_cross_document_links = None
 
     reserved_paths = [
         _resolved_path(reserved)
@@ -291,7 +295,9 @@ def build_corpus_graph(
         "cache_write_status": None,
         "cache_write_error": None,
         "cache_refresh": cache_stats["refresh"],
+        "max_cross_document_links": max_cross_document_links,
         "cross_document_link_count": 0,
+        "cross_document_link_limit_reached": False,
     }
     nodes: List[Dict[str, Any]] = [
         make_node(
@@ -597,9 +603,16 @@ def build_corpus_graph(
         manifest_attrs["cache_write_status"] = cache_write.status
         manifest_attrs["cache_write_error"] = cache_write.error_message
     merged = _merge_graphs([corpus_graph, *graph_parts])
-    cross_document_link_count = _add_corpus_cross_document_links(merged)
-    manifest_attrs["cross_document_link_count"] = cross_document_link_count
-    nodes[0]["attributes"]["cross_document_link_count"] = cross_document_link_count
+    cross_document_links = _add_corpus_cross_document_links(
+        merged,
+        max_links=max_cross_document_links,
+    )
+    manifest_attrs["cross_document_link_count"] = cross_document_links.added
+    manifest_attrs["cross_document_link_limit_reached"] = cross_document_links.limit_reached
+    nodes[0]["attributes"]["cross_document_link_count"] = cross_document_links.added
+    nodes[0]["attributes"]["cross_document_link_limit_reached"] = (
+        cross_document_links.limit_reached
+    )
     return merged
 
 
@@ -635,6 +648,12 @@ class CacheWrite:
     updated: bool
     status: str
     error_message: str | None = None
+
+
+@dataclass(frozen=True)
+class CrossDocumentLinkResult:
+    added: int
+    limit_reached: bool = False
 
 
 def scan_document_files(
@@ -935,13 +954,18 @@ def _ensure_folder_nodes(
     return parent_id
 
 
-def _add_corpus_cross_document_links(graph: Dict[str, Any]) -> int:
+def _add_corpus_cross_document_links(
+    graph: Dict[str, Any],
+    *,
+    max_links: int | None = None,
+) -> CrossDocumentLinkResult:
     """
     Add deterministic mention edges between nodes from different corpus files.
 
     Per-file extractors intentionally work in isolation. This pass reconnects
     the merged corpus graph when one document explicitly names another
-    document's title, section, decision, table, or path-derived stem.
+    document's title, section, decision, table, or path-derived stem. The
+    optional limit bounds the corpus-wide edge expansion for very large trees.
     """
     nodes = graph.get("nodes", [])
     edges = graph.setdefault("edges", [])
@@ -973,11 +997,13 @@ def _add_corpus_cross_document_links(graph: Dict[str, Any]) -> int:
             edge_key = (source_id, target["id"], "mentions")
             if edge_key in existing_edges:
                 continue
+            if max_links is not None and added >= max_links:
+                return CrossDocumentLinkResult(added=added, limit_reached=True)
             edges.append(make_edge(source_id, target["id"], "mentions"))
             existing_edges.add(edge_key)
             added += 1
 
-    return added
+    return CrossDocumentLinkResult(added=added)
 
 
 def _cross_document_targets(nodes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:

@@ -111,6 +111,14 @@ def main(argv: List[str] | None = None) -> int:
         action="store_true",
         help="Rebuild cached per-file graphs instead of reading existing cache entries",
     )
+    parser.add_argument(
+        "--max-cross-document-links",
+        type=int,
+        help=(
+            "Maximum cross-document mention edges to add after merging a "
+            "directory corpus; set -1 to disable"
+        ),
+    )
     args = parser.parse_args(argv)
 
     max_file_bytes = None if args.max_file_bytes < 0 else args.max_file_bytes
@@ -123,6 +131,11 @@ def main(argv: List[str] | None = None) -> int:
         None
         if args.max_scan_entries is None or args.max_scan_entries < 0
         else args.max_scan_entries
+    )
+    max_cross_document_links = (
+        None
+        if args.max_cross_document_links is None or args.max_cross_document_links < 0
+        else args.max_cross_document_links
     )
     graph = build_corpus_graph(
         args.path,
@@ -140,6 +153,7 @@ def main(argv: List[str] | None = None) -> int:
         cache_path=args.cache,
         output_path=args.output,
         refresh_cache=args.refresh_cache,
+        max_cross_document_links=max_cross_document_links,
     )
     payload = json.dumps(graph, indent=2 if args.pretty else None, sort_keys=args.pretty)
     if args.output:
