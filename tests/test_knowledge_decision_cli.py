@@ -295,6 +295,48 @@ Evaluation results show parser recall improves by 20% on table documents.
     assert all(nodes_by_id[e["from"]]["attributes"]["type"] == "claim" for e in supported_by)
 
 
+def test_extract_knowledge_graph_materializes_markdown_tables_as_evidence():
+    text = """# Results
+
+We show graph ranked context improves retrieval recall.
+
+| Method | Recall | Source |
+| --- | ---: | --- |
+| Baseline retrieval | 42% | [1] |
+| Graph ranked context | 61% | [1] |
+
+# References
+
+[1] Smith, A. Context Ranking Evaluation. 2025.
+"""
+    graph = extract_knowledge_graph(text, source="results.md")
+    nodes = graph["nodes"]
+    table = next(n for n in nodes if n.get("attributes", {}).get("type") == "table")
+    row_evidence = [
+        n
+        for n in nodes
+        if n.get("attributes", {}).get("type") == "evidence"
+        and n.get("attributes", {}).get("evidence_kind") == "table_row"
+    ]
+    claim = next(n for n in nodes if n.get("attributes", {}).get("type") == "claim")
+    graph_row = next(n for n in row_evidence if "Graph ranked context" in n.get("content", ""))
+    citation = next(
+        n
+        for n in nodes
+        if n.get("attributes", {}).get("type") == "citation"
+        and n["label"] == "1"
+    )
+    reference = next(n for n in nodes if n.get("attributes", {}).get("type") == "reference")
+
+    assert table["attributes"]["headers"] == ["Method", "Recall", "Source"]
+    assert table["attributes"]["row_count"] == 2
+    assert len(row_evidence) == 2
+    assert any(e["from"] == table["id"] and e["to"] == graph_row["id"] and e["label"] == "contains" for e in graph["edges"])
+    assert any(e["from"] == graph_row["id"] and e["to"] == citation["id"] and e["label"] == "cites" for e in graph["edges"])
+    assert any(e["from"] == citation["id"] and e["to"] == reference["id"] and e["label"] == "resolves_to" for e in graph["edges"])
+    assert any(e["from"] == claim["id"] and e["to"] == graph_row["id"] and e["label"] == "supported_by" for e in graph["edges"])
+
+
 def test_extract_decision_graph_roles_and_edges():
     graph = extract_decision_graph(DECISION, source="adr.md")
     node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}

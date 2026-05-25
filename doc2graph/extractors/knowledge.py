@@ -114,6 +114,7 @@ def extract_knowledge_graph(
     max_concepts: int = 40,
     max_claims: int = 30,
     max_definitions: int = 30,
+    max_tables: int = 20,
 ) -> GraphDict:
     """
     Extract a document knowledge graph from paper or documentation text.
@@ -154,6 +155,7 @@ def extract_knowledge_graph(
         })
         _add_edge(edges, seen_edges, doc_id, reference_id, "contains")
 
+    table_records: List[Dict[str, Any]] = []
     for index, section in enumerate(sections):
         section_id = _source_node_id("section", f"{index}-{section['title']}", source)
         attrs = {
@@ -189,6 +191,47 @@ def extract_knowledge_graph(
             reference_ids,
         )
 
+        if len(table_records) < max_tables:
+            for table_index, table in enumerate(_extract_markdown_tables(section["content"])):
+                if len(table_records) >= max_tables:
+                    break
+                table_id = _source_node_id(
+                    "table",
+                    f"{index}-{table_index}-{table['content']}",
+                    source,
+                )
+                _add_node(nodes, seen_nodes, table_id, f"Table: {section['title']}", table["content"], {
+                    "type": "table",
+                    "source": source,
+                    "document_id": doc_id,
+                    "section": section["title"],
+                    "section_index": index,
+                    "table_index": table_index,
+                    "headers": table["headers"],
+                    "row_count": len(table["rows"]),
+                    "extraction_method": "static",
+                })
+                _add_edge(edges, seen_edges, section_id, table_id, "contains")
+                _add_citation_edges(
+                    nodes,
+                    edges,
+                    seen_nodes,
+                    seen_edges,
+                    table_id,
+                    table["content"],
+                    source,
+                    doc_id,
+                    reference_ids,
+                )
+                table_records.append({
+                    "id": table_id,
+                    "section_index": index,
+                    "section_title": section["title"],
+                    "table_index": table_index,
+                    "content": table["content"],
+                    "rows": table["rows"],
+                })
+
     concept_counts = _extract_concepts(text)
     materialized_concepts: set[str] = set()
     for concept, count in concept_counts[:max_concepts]:
@@ -204,6 +247,9 @@ def extract_knowledge_graph(
             if concept.lower() in section["content"].lower():
                 section_id = _source_node_id("section", f"{index}-{section['title']}", source)
                 _add_edge(edges, seen_edges, section_id, concept_id, "mentions")
+        for table in table_records:
+            if concept.lower() in table["content"].lower():
+                _add_edge(edges, seen_edges, table["id"], concept_id, "mentions")
 
     definition_count = 0
     for index, section in enumerate(sections):
@@ -324,6 +370,49 @@ def extract_knowledge_graph(
                     reference_ids,
                 )
 
+    for table in table_records:
+        table_id = table["id"]
+        for row_index, row in enumerate(table["rows"]):
+            row_text = " | ".join(
+                f"{key}: {value}" for key, value in row.items() if value
+            )
+            if not _looks_like_table_evidence(row_text):
+                continue
+            evidence_id = _source_node_id(
+                "evidence",
+                f"table-{table['section_index']}-{table['table_index']}-{row_index}-{row_text}",
+                source,
+            )
+            evidence_records.append({
+                "id": evidence_id,
+                "section_index": table["section_index"],
+                "sentence_index": 10_000 + row_index,
+                "text": row_text,
+            })
+            _add_node(nodes, seen_nodes, evidence_id, _label(row_text), row_text, {
+                "type": "evidence",
+                "source": source,
+                "document_id": doc_id,
+                "section": table["section_title"],
+                "section_index": table["section_index"],
+                "table_index": table["table_index"],
+                "row_index": row_index,
+                "evidence_kind": "table_row",
+                "extraction_method": "static",
+            })
+            _add_edge(edges, seen_edges, table_id, evidence_id, "contains")
+            _add_citation_edges(
+                nodes,
+                edges,
+                seen_nodes,
+                seen_edges,
+                evidence_id,
+                row_text,
+                source,
+                doc_id,
+                reference_ids,
+            )
+
     _add_support_edges(edges, seen_edges, claim_records, evidence_records)
 
     return {"nodes": nodes, "edges": edges, "current_node_id": doc_id}
@@ -390,6 +479,68 @@ def _extract_definitions(text: str) -> List[Dict[str, str]]:
         seen_terms.add(normalized)
 
     return definitions
+
+
+def _extract_markdown_tables(text: str) -> List[Dict[str, Any]]:
+    tables: List[Dict[str, Any]] = []
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines) - 1:
+        header_line = lines[index].strip()
+        separator_line = lines[index + 1].strip()
+        if not (_is_table_row(header_line) and _is_table_separator(separator_line)):
+            index += 1
+            continue
+
+        headers = [_clean_table_cell(cell) for cell in _split_table_row(header_line)]
+        rows: List[Dict[str, str]] = []
+        table_lines = [header_line, separator_line]
+        index += 2
+        while index < len(lines) and _is_table_row(lines[index].strip()):
+            row_line = lines[index].strip()
+            cells = [_clean_table_cell(cell) for cell in _split_table_row(row_line)]
+            if any(cells):
+                rows.append({
+                    header or f"column_{cell_index + 1}": cells[cell_index]
+                    if cell_index < len(cells)
+                    else ""
+                    for cell_index, header in enumerate(headers)
+                })
+                table_lines.append(row_line)
+            index += 1
+
+        if headers and rows:
+            tables.append({
+                "headers": headers,
+                "rows": rows,
+                "content": "\n".join(table_lines),
+            })
+        continue
+    return tables
+
+
+def _is_table_row(line: str) -> bool:
+    return line.startswith("|") and line.endswith("|") and line.count("|") >= 2
+
+
+def _is_table_separator(line: str) -> bool:
+    if not _is_table_row(line):
+        return False
+    cells = _split_table_row(line)
+    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells)
+
+
+def _split_table_row(line: str) -> List[str]:
+    return line.strip().strip("|").split("|")
+
+
+def _clean_table_cell(cell: str) -> str:
+    return re.sub(r"<br\s*/?>", " ", cell, flags=re.IGNORECASE).strip(" `")
+
+
+def _looks_like_table_evidence(row_text: str) -> bool:
+    lower = row_text.lower()
+    return bool(re.search(r"\d|%", row_text)) or any(cue in lower for cue in _EVIDENCE_CUES)
 
 
 def _normalize_concept(value: str) -> str:

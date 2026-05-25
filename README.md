@@ -49,7 +49,7 @@ doc2graph docs.md --graph all --output docs.graph.json
 doc2graph ./docs --graph all --output docs-corpus.graph.json
 ```
 
-- `knowledge`: document, section, concept, definition, claim, evidence, citation, reference, and URL nodes.
+- `knowledge`: document, section, concept, definition, claim, evidence, Markdown table, citation, reference, and URL nodes.
 - `decision`: problem, context/driver/rationale, option, pros, cons, tradeoff, decision, consequence, and confidence nodes from ADR headings, status sections, bullets, and Markdown option tables.
 - `schema`: table/entity graphs from schema docs and data dictionaries.
 - `media`: image/chart metadata, OCR text, and chart signal nodes.
@@ -206,6 +206,9 @@ Claim-to-evidence support edges are deterministic and conservative. Evidence
 in the same section is preferred, and cross-section support is only added when
 the claim and evidence share meaningful terms, which avoids noisy support paths
 between unrelated claims in large documents.
+Markdown result tables in knowledge documents are materialized as `table` nodes,
+and numeric/result rows are exposed as `evidence` nodes with table row
+provenance, citations, and reference resolution where present.
 
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, total selected bytes, a deterministic selected-path ordering contract,
