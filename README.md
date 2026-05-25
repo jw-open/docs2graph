@@ -49,7 +49,7 @@ doc2graph docs.md --graph all --output docs.graph.json
 doc2graph ./docs --graph all --output docs-corpus.graph.json
 ```
 
-- `knowledge`: document, section, concept, claim, evidence, citation, reference, and URL nodes.
+- `knowledge`: document, section, concept, definition, claim, evidence, citation, reference, and URL nodes.
 - `decision`: problem, context, option, pros, cons, tradeoff, decision, consequence, and confidence nodes from ADR headings, bullets, and Markdown option tables.
 - `schema`: table/entity graphs from schema docs and data dictionaries.
 - `media`: image/chart metadata, OCR text, and chart signal nodes.
@@ -135,6 +135,12 @@ sections when those entries are present. Claim and evidence nodes keep their
 own `cites` edges, and citation nodes connect to parsed reference entries with
 `resolves_to`, preserving deterministic provenance for PageRank and context
 selection.
+
+Knowledge extraction also turns explicit definitions into graph structure.
+Glossary-style lines such as `Personalized PageRank: ...` and simple sentences
+such as `Context engineering is ...` become `definition` nodes connected to
+their `concept` with `defines` and `defined_by` edges, while preserving section
+and citation provenance.
 
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, a deterministic selected-path ordering contract and SHA-256 digest,

@@ -135,6 +135,49 @@ def test_extract_knowledge_graph_resolves_inline_citations_to_references():
     assert len(evidence_cites) == 1
 
 
+def test_extract_knowledge_graph_adds_definition_provenance():
+    text = """# Glossary
+
+- Personalized PageRank: a graph ranking algorithm that biases traversal toward query relevant seed nodes [1].
+
+# Architecture
+
+Context engineering is the process of selecting structured context for a model.
+
+# References
+
+[1] Page, L. The PageRank Citation Ranking. 1998.
+"""
+    graph = extract_knowledge_graph(text, source="glossary.md", max_concepts=0)
+    nodes = graph["nodes"]
+    node_types = {n.get("attributes", {}).get("type") for n in nodes}
+    labels = {e["label"] for e in graph["edges"]}
+    definition = next(
+        n
+        for n in nodes
+        if n.get("attributes", {}).get("type") == "definition"
+        and n["attributes"]["normalized_term"] == "personalized pagerank"
+    )
+    concept = next(
+        n
+        for n in nodes
+        if n.get("attributes", {}).get("type") == "concept"
+        and n["label"] == "personalized pagerank"
+    )
+    citation = next(
+        n
+        for n in nodes
+        if n.get("attributes", {}).get("type") == "citation"
+        and n["label"] == "1"
+    )
+
+    assert "definition" in node_types
+    assert {"defines", "defined_by", "resolves_to"} <= labels
+    assert any(e["from"] == definition["id"] and e["to"] == concept["id"] and e["label"] == "defines" for e in graph["edges"])
+    assert any(e["from"] == concept["id"] and e["to"] == definition["id"] and e["label"] == "defined_by" for e in graph["edges"])
+    assert any(e["from"] == definition["id"] and e["to"] == citation["id"] and e["label"] == "cites" for e in graph["edges"])
+
+
 def test_extract_decision_graph_roles_and_edges():
     graph = extract_decision_graph(DECISION, source="adr.md")
     node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}

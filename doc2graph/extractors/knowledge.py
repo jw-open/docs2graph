@@ -22,6 +22,15 @@ _BRACKET_CITATION_RE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
 _AUTHOR_YEAR_RE = re.compile(r"\(([A-Z][A-Za-z\-]+(?:\s+et\s+al\.)?,\s*(?:19|20)\d{2})\)")
 _REFERENCE_ENTRY_RE = re.compile(r"^\s*\[(\d+)\]\s+(.+)$")
 _PHRASE_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9\-]*(?:\s+[A-Za-z][A-Za-z0-9\-]*){1,4}\b")
+_GLOSSARY_DEFINITION_RE = re.compile(
+    r"^\s*(?:[-*]\s+)?(?:\*\*)?([A-Za-z][A-Za-z0-9 /+\-]{1,80}?)"
+    r"(?:\*\*)?\s*(?::|--| - )\s+(.{12,})$"
+)
+_SENTENCE_DEFINITION_RE = re.compile(
+    r"^\s*(?:A|An|The)?\s*([A-Z][A-Za-z0-9 /+\-]{2,80}?)\s+"
+    r"(?:is|are|means|refers to|is defined as|are defined as)\s+(.{12,})$",
+    re.IGNORECASE,
+)
 
 _STOP_PHRASES = {
     "this paper",
@@ -66,14 +75,16 @@ def extract_knowledge_graph(
     source: str = "",
     max_concepts: int = 40,
     max_claims: int = 30,
+    max_definitions: int = 30,
 ) -> GraphDict:
     """
     Extract a document knowledge graph from paper or documentation text.
 
-    Nodes include the document, sections, concepts, claims, evidence snippets,
-    citations, and URLs. Edges preserve provenance, for example section
-    ``contains`` claim, claim ``supported_by`` evidence, section ``mentions``
-    concept, and section ``cites`` citation.
+    Nodes include the document, sections, concepts, definitions, claims,
+    evidence snippets, citations, and URLs. Edges preserve provenance, for
+    example section ``contains`` claim, definition ``defines`` concept, claim
+    ``supported_by`` evidence, section ``mentions`` concept, and section
+    ``cites`` citation.
     """
     nodes: List[Dict[str, Any]] = []
     edges: List[Dict[str, Any]] = []
@@ -139,6 +150,7 @@ def extract_knowledge_graph(
         )
 
     concept_counts = _extract_concepts(text)
+    materialized_concepts: set[str] = set()
     for concept, count in concept_counts[:max_concepts]:
         concept_id = _node_id("concept", concept)
         _add_node(nodes, seen_nodes, concept_id, concept, attributes={
@@ -147,10 +159,65 @@ def extract_knowledge_graph(
             "source": source,
             "extraction_method": "static",
         })
+        materialized_concepts.add(concept)
         for index, section in enumerate(sections):
             if concept.lower() in section["content"].lower():
                 section_id = _source_node_id("section", f"{index}-{section['title']}", source)
                 _add_edge(edges, seen_edges, section_id, concept_id, "mentions")
+
+    definition_count = 0
+    for index, section in enumerate(sections):
+        if definition_count >= max_definitions:
+            break
+        section_id = _source_node_id("section", f"{index}-{section['title']}", source)
+        for definition in _extract_definitions(section["content"]):
+            if definition_count >= max_definitions:
+                break
+            term = definition["term"]
+            definition_text = definition["definition"]
+            normalized_term = _normalize_concept(term)
+            if not normalized_term:
+                continue
+            concept_id = _node_id("concept", normalized_term)
+            if normalized_term not in materialized_concepts:
+                _add_node(nodes, seen_nodes, concept_id, normalized_term, attributes={
+                    "type": "concept",
+                    "frequency": _count_phrase_occurrences(text, normalized_term),
+                    "source": source,
+                    "extraction_method": "static",
+                })
+                materialized_concepts.add(normalized_term)
+            definition_id = _source_node_id(
+                "definition",
+                f"{normalized_term}-{definition_text}",
+                source,
+            )
+            _add_node(nodes, seen_nodes, definition_id, _label(f"{term}: {definition_text}"), definition_text, {
+                "type": "definition",
+                "term": term,
+                "normalized_term": normalized_term,
+                "source": source,
+                "document_id": doc_id,
+                "section": section["title"],
+                "section_index": index,
+                "extraction_method": "static",
+            })
+            _add_edge(edges, seen_edges, section_id, definition_id, "contains")
+            _add_edge(edges, seen_edges, definition_id, concept_id, "defines")
+            _add_edge(edges, seen_edges, concept_id, definition_id, "defined_by")
+            _add_edge(edges, seen_edges, section_id, concept_id, "mentions")
+            _add_citation_edges(
+                nodes,
+                edges,
+                seen_nodes,
+                seen_edges,
+                definition_id,
+                definition_text,
+                source,
+                doc_id,
+                reference_ids,
+            )
+            definition_count += 1
 
     claim_count = 0
     evidence_nodes: List[Tuple[str, str, str]] = []
@@ -238,16 +305,67 @@ def _split_sections(text: str) -> List[Dict[str, Any]]:
 def _extract_concepts(text: str) -> List[Tuple[str, int]]:
     counter: Counter[str] = Counter()
     for phrase in _PHRASE_RE.findall(text):
-        normalized = " ".join(phrase.split()).strip(" .,:;()[]").lower()
-        words = normalized.split()
-        if len(words) < 2 or normalized in _STOP_PHRASES:
-            continue
-        if words[0] in {"this", "that", "these", "those", "there", "where", "when"}:
-            continue
-        if len(normalized) < 8:
+        normalized = _normalize_concept(phrase)
+        if not normalized:
             continue
         counter[normalized] += 1
     return counter.most_common()
+
+
+def _extract_definitions(text: str) -> List[Dict[str, str]]:
+    definitions: List[Dict[str, str]] = []
+    seen_terms: set[str] = set()
+
+    for line in text.splitlines():
+        match = _GLOSSARY_DEFINITION_RE.match(line.strip())
+        if not match:
+            continue
+        term = match.group(1).strip(" *`")
+        definition = match.group(2).strip()
+        normalized = _normalize_concept(term)
+        if not normalized or normalized in seen_terms or _looks_like_heading_noise(term):
+            continue
+        definitions.append({"term": term, "definition": definition})
+        seen_terms.add(normalized)
+
+    for sentence in _sentences(text):
+        match = _SENTENCE_DEFINITION_RE.match(sentence)
+        if not match:
+            continue
+        term = match.group(1).strip()
+        definition = match.group(2).strip()
+        normalized = _normalize_concept(term)
+        if not normalized or normalized in seen_terms or _looks_like_heading_noise(term):
+            continue
+        definitions.append({"term": term, "definition": definition})
+        seen_terms.add(normalized)
+
+    return definitions
+
+
+def _normalize_concept(value: str) -> str:
+    normalized = " ".join(value.split()).strip(" .,:;()[]`*_").lower()
+    normalized = re.sub(r"\s*/\s*", "/", normalized)
+    words = normalized.split()
+    if len(words) < 2 or normalized in _STOP_PHRASES:
+        return ""
+    if words[0] in {"this", "that", "these", "those", "there", "where", "when"}:
+        return ""
+    if len(normalized) < 8:
+        return ""
+    return normalized
+
+
+def _looks_like_heading_noise(term: str) -> bool:
+    lower = term.strip().lower()
+    return lower in {"note", "example", "warning", "tip", "todo", "references"} or bool(
+        re.match(r"^option\s+[a-z0-9]+$", lower)
+    )
+
+
+def _count_phrase_occurrences(text: str, phrase: str) -> int:
+    pattern = re.compile(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", re.IGNORECASE)
+    return len(pattern.findall(text))
 
 
 def _extract_urls(text: str) -> Iterable[str]:

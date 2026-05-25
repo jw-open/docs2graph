@@ -51,6 +51,7 @@ _CORPUS_LINK_SOURCE_TYPES = {
     "decision",
     "consequence",
     "confidence",
+    "definition",
     "claim",
     "evidence",
     "ocr_text",
@@ -68,6 +69,7 @@ _CORPUS_LINK_TARGET_TYPES = {
     "decision",
     "consequence",
     "confidence",
+    "definition",
     "table",
 }
 
