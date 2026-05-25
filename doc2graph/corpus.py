@@ -8,6 +8,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 from urllib.parse import unquote, urlsplit
@@ -154,6 +155,20 @@ EXTRACTION_FINGERPRINT_BY_GRAPH_TYPE = {
     ),
 }
 
+LOADER_DEPENDENCIES_BY_SUFFIX = {
+    ".docx": ("python-docx",),
+    ".pptx": ("python-pptx",),
+    ".pdf": ("pypdf", "pdf2image", "pytesseract", "Pillow"),
+    ".png": ("pytesseract", "Pillow"),
+    ".jpg": ("pytesseract", "Pillow"),
+    ".jpeg": ("pytesseract", "Pillow"),
+    ".tif": ("pytesseract", "Pillow"),
+    ".tiff": ("pytesseract", "Pillow"),
+    ".bmp": ("pytesseract", "Pillow"),
+    ".gif": ("pytesseract", "Pillow"),
+    ".webp": ("pytesseract", "Pillow"),
+}
+
 
 def build_corpus_graph(
     path: str,
@@ -291,6 +306,9 @@ def build_corpus_graph(
         if cache_stats["enabled"]
         else None,
         "cache_validation": "content_sha256" if cache_stats["enabled"] else None,
+        "cache_dependency_validation": "loader_package_versions"
+        if cache_stats["enabled"]
+        else None,
         "cache_extraction_fingerprint": _extraction_fingerprint(graph_type)
         if cache_stats["enabled"]
         else None,
@@ -1325,11 +1343,13 @@ def _file_metadata(
             content_sha256_reused = True
     if content_sha256 is None:
         content_sha256 = _file_sha256(path)
+    loader_dependencies = _loader_dependency_versions(path.suffix.lower())
     return {
         "root": str(root.resolve()),
         "relative_path": path.relative_to(root).as_posix(),
         "graph_type": graph_type,
         "extraction_fingerprint": _extraction_fingerprint(graph_type),
+        "loader_dependencies": loader_dependencies,
         **stat_metadata,
         "content_sha256": content_sha256,
         "content_sha256_reused": content_sha256_reused,
@@ -1366,6 +1386,17 @@ def _selected_file_records_sha256(
             digest.update(value.encode("utf-8", errors="surrogateescape"))
             digest.update(b"\0")
     return digest.hexdigest()
+
+
+def _loader_dependency_versions(suffix: str) -> Dict[str, str]:
+    """Return installed parser package versions that can affect this suffix."""
+    versions: Dict[str, str] = {}
+    for package in LOADER_DEPENDENCIES_BY_SUFFIX.get(suffix.lower(), ()):
+        try:
+            versions[package] = importlib_metadata.version(package)
+        except importlib_metadata.PackageNotFoundError:
+            versions[package] = "<not-installed>"
+    return versions
 
 
 @lru_cache(maxsize=None)

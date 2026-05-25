@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import time
+from pathlib import Path
 
 import pytest
 
@@ -1365,6 +1366,122 @@ def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
         for n in refreshed["nodes"]
         if n.get("attributes", {}).get("type") == "file"
     } == {"a.md": "refresh", "b.md": "refresh"}
+
+
+def test_directory_corpus_cache_records_relevant_loader_dependency_versions(tmp_path, monkeypatch):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    source = docs / "deck.pptx"
+    source.write_bytes(b"placeholder pptx bytes")
+
+    from doc2graph import corpus
+    from doc2graph import cli
+
+    def fake_version(package):
+        if package == "python-pptx":
+            return "1.2.3"
+        raise corpus.importlib_metadata.PackageNotFoundError(package)
+
+    def fake_build_file_graph(path, graph_type="knowledge"):
+        return {
+            "nodes": [
+                {
+                    "id": f"document:{Path(path).stem}",
+                    "label": Path(path).name,
+                    "content": "Slide text",
+                    "attributes": {"type": "document", "source": path},
+                }
+            ],
+            "edges": [],
+            "current_node_id": f"document:{Path(path).stem}",
+        }
+
+    monkeypatch.setattr(corpus.importlib_metadata, "version", fake_version)
+    monkeypatch.setattr(cli, "build_file_graph", fake_build_file_graph)
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    entry = next(iter(payload["entries"].values()))
+
+    assert manifest["attributes"]["cache_dependency_validation"] == "loader_package_versions"
+    assert entry["metadata"]["loader_dependencies"] == {"python-pptx": "1.2.3"}
+
+
+def test_directory_corpus_cache_invalidates_when_loader_dependency_version_changes(tmp_path, monkeypatch):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    source = docs / "report.docx"
+    source.write_bytes(b"placeholder docx bytes")
+
+    from doc2graph import corpus
+    from doc2graph import cli
+
+    version = {"python-docx": "0.8.11"}
+    calls = []
+
+    def fake_version(package):
+        return version[package]
+
+    def fake_build_file_graph(path, graph_type="knowledge"):
+        calls.append(version["python-docx"])
+        return {
+            "nodes": [
+                {
+                    "id": f"document:{len(calls)}",
+                    "label": Path(path).name,
+                    "content": f"Loaded with {version['python-docx']}",
+                    "attributes": {"type": "document", "source": path},
+                }
+            ],
+            "edges": [],
+            "current_node_id": f"document:{len(calls)}",
+        }
+
+    monkeypatch.setattr(corpus.importlib_metadata, "version", fake_version)
+    monkeypatch.setattr(cli, "build_file_graph", fake_build_file_graph)
+
+    first = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    second = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    version["python-docx"] = "1.0.0"
+    third = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    first_manifest = next(n for n in first["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    second_manifest = next(n for n in second["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    third_manifest = next(n for n in third["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    entry = next(iter(payload["entries"].values()))
+
+    assert first_manifest["attributes"]["cache_misses"] == 1
+    assert second_manifest["attributes"]["cache_hits"] == 1
+    assert second_manifest["attributes"]["cache_misses"] == 0
+    assert third_manifest["attributes"]["cache_hits"] == 0
+    assert third_manifest["attributes"]["cache_misses"] == 1
+    assert calls == ["0.8.11", "1.0.0"]
+    assert entry["metadata"]["loader_dependencies"] == {"python-docx": "1.0.0"}
+
+
+def test_directory_corpus_cache_does_not_track_dependency_versions_for_text_formats(tmp_path, monkeypatch):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+
+    from doc2graph import corpus
+
+    def fail_if_called(package):
+        raise AssertionError(f"unexpected dependency lookup for {package}")
+
+    monkeypatch.setattr(corpus.importlib_metadata, "version", fail_if_called)
+
+    build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    entry = next(iter(payload["entries"].values()))
+
+    assert entry["metadata"]["loader_dependencies"] == {}
 
 
 def test_directory_corpus_reuses_cached_content_digests_for_unchanged_files(tmp_path, monkeypatch):
