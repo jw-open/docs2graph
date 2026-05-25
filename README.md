@@ -89,6 +89,7 @@ doc2graph ./exports --graph all --max-files 500 --stop-after-max-files
 doc2graph ./exports --graph all --max-total-bytes 1073741824 --output corpus.graph.json
 doc2graph ./exports --graph all --max-depth 2 --output corpus.graph.json
 doc2graph ./exports --graph all --max-scan-entries 100000 --output corpus.graph.json
+doc2graph ./exports --graph all --extension md --extension pdf --output corpus.graph.json
 doc2graph ./exports --graph all --follow-symlinks --output corpus.graph.json
 doc2graph ./exports --graph all --max-file-reference-links 50000 --output corpus.graph.json
 doc2graph ./exports --graph all --max-cross-document-links 50000 --output corpus.graph.json
@@ -130,6 +131,10 @@ Large corpora are handled by deterministic limits:
   select files under `adr/`. Supported files outside an include filter are
   counted as `include_filter_mismatch` skips, with bounded sample nodes. Paths
   matched by user exclude filters are counted as `exclude_filter_match` skips.
+- `--extension EXT`: repeatable suffix allowlist for supported files, such as
+  `--extension md --extension pdf`. Supported files with other suffixes are
+  counted as `extension_filter_mismatch` skips, while unsupported files are
+  still reported separately as `unsupported_extension`.
 - `--skip-report-limit N`: cap the total number of omitted files listed as
   `skipped_file` or extraction-error nodes while still preserving aggregate
   skip counts and a deterministic SHA-256 digest of skipped path records. The

@@ -100,6 +100,14 @@ def main(argv: List[str] | None = None) -> int:
         help="Directory include glob, relative to corpus root; may be repeated",
     )
     parser.add_argument(
+        "--extension",
+        action="append",
+        help=(
+            "Only select supported directory files with this suffix, such as "
+            "md or .pdf; may be repeated"
+        ),
+    )
+    parser.add_argument(
         "--exclude",
         action="append",
         help="Directory exclude glob or name; may be repeated",
@@ -169,6 +177,7 @@ def main(argv: List[str] | None = None) -> int:
         max_scan_entries=max_scan_entries,
         max_file_bytes=max_file_bytes,
         max_total_bytes=max_total_bytes,
+        extensions=args.extension,
         include=args.include,
         exclude=args.exclude,
         skip_report_limit=args.skip_report_limit,

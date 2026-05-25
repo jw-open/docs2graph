@@ -185,6 +185,7 @@ def build_corpus_graph(
     max_scan_entries: int | None = None,
     max_file_bytes: int | None = DEFAULT_MAX_FILE_BYTES,
     max_total_bytes: int | None = None,
+    extensions: Sequence[str] | None = None,
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
     skip_report_limit: int = 100,
@@ -227,6 +228,7 @@ def build_corpus_graph(
         stop_after_max_files=stop_after_max_files,
         max_depth=max_depth,
         max_scan_entries=max_scan_entries,
+        extensions=extensions,
         skip_report_limit=skip_report_limit,
         reserved_paths=reserved_paths,
     )
@@ -282,6 +284,7 @@ def build_corpus_graph(
         "skip_report_truncated": scan.skipped_count > len(scan.skipped_samples),
         "include_patterns": list(include or ()),
         "exclude_patterns": list(exclude or ()),
+        "extension_filters": _normalize_extensions(extensions),
         "skip_report_limit": skip_report_limit,
         "max_files": max_files,
         "stop_after_max_files": stop_after_max_files,
@@ -721,6 +724,7 @@ def scan_document_files(
     follow_symlinks: bool = False,
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
+    extensions: Sequence[str] | None = None,
     max_files: int | None = None,
     stop_after_max_files: bool = False,
     max_depth: int | None = None,
@@ -730,6 +734,7 @@ def scan_document_files(
 ) -> CorpusScan:
     """Scan ``root`` for supported documents and bounded skipped-file metadata."""
     patterns = tuple(include or ())
+    allowed_suffixes = set(_normalize_extensions(extensions))
     default_excludes = tuple(DEFAULT_IGNORE_PATTERNS)
     user_excludes = tuple(exclude or ())
     reserved = frozenset(_resolved_path(path) for path in reserved_paths or ())
@@ -755,6 +760,9 @@ def scan_document_files(
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
             _record_skipped(result, path, rel, "unsupported_extension", report_limit)
             continue
+        if allowed_suffixes and path.suffix.lower() not in allowed_suffixes:
+            _record_skipped(result, path, rel, "extension_filter_mismatch", report_limit)
+            continue
         if patterns and not _matches_include_patterns(path, rel, patterns):
             _record_skipped(result, path, rel, "include_filter_mismatch", report_limit)
             continue
@@ -777,6 +785,7 @@ def iter_document_files(
     follow_symlinks: bool = False,
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
+    extensions: Sequence[str] | None = None,
     max_files: int | None = None,
     stop_after_max_files: bool = False,
     max_depth: int | None = None,
@@ -789,6 +798,7 @@ def iter_document_files(
         follow_symlinks=follow_symlinks,
         include=include,
         exclude=exclude,
+        extensions=extensions,
         max_files=max_files,
         stop_after_max_files=stop_after_max_files,
         max_depth=max_depth,
@@ -1281,6 +1291,23 @@ def _matches_include_patterns(path: Path, rel: str, patterns: Sequence[str]) -> 
         if pattern in rel_parts or fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(path.name, pattern):
             return True
     return False
+
+
+def _normalize_extensions(extensions: Sequence[str] | None) -> List[str]:
+    if not extensions:
+        return []
+    normalized = []
+    seen = set()
+    for extension in extensions:
+        suffix = extension.strip().lower()
+        if not suffix:
+            continue
+        if not suffix.startswith("."):
+            suffix = f".{suffix}"
+        if suffix not in seen:
+            normalized.append(suffix)
+            seen.add(suffix)
+    return normalized
 
 
 def _skip_path_type(path: Path) -> str:

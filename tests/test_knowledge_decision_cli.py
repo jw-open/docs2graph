@@ -889,6 +889,44 @@ def test_directory_corpus_reports_supported_files_outside_include(tmp_path):
     assert skipped[0]["attributes"]["relative_path"] == "notes/draft.md"
 
 
+def test_directory_corpus_can_filter_by_extension(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.txt").write_text("Beta plain text document.", encoding="utf-8")
+    (docs / "c.bin").write_bytes(b"\x00")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        extensions=["md"],
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = {
+        n["attributes"]["relative_path"]: n["attributes"]["reason"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+    }
+
+    assert manifest["attributes"]["extension_filters"] == [".md"]
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["skipped_by_reason"] == {
+        "extension_filter_mismatch": 1,
+        "unsupported_extension": 1,
+    }
+    assert file_paths == ["a.md"]
+    assert skipped == {
+        "b.txt": "extension_filter_mismatch",
+        "c.bin": "unsupported_extension",
+    }
+
+
 def test_directory_corpus_include_accepts_folder_name(tmp_path):
     docs = tmp_path / "docs"
     adr = docs / "adr"
@@ -1166,6 +1204,39 @@ def test_cli_accepts_max_scan_entries(tmp_path):
     assert exit_code == 0
     assert manifest["attributes"]["max_scan_entries"] == 1
     assert manifest["attributes"]["max_scan_entries_reached"] is True
+
+
+def test_cli_accepts_extension_filters(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    output = tmp_path / "graph.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.txt").write_text("Beta plain text document.", encoding="utf-8")
+
+    exit_code = main(
+        [
+            str(docs),
+            "--graph",
+            "knowledge",
+            "--extension",
+            ".md",
+            "--output",
+            str(output),
+        ]
+    )
+
+    graph = json.loads(output.read_text(encoding="utf-8"))
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+
+    assert exit_code == 0
+    assert manifest["attributes"]["extension_filters"] == [".md"]
+    assert manifest["attributes"]["skipped_by_reason"] == {"extension_filter_mismatch": 1}
+    assert file_paths == ["a.md"]
 
 
 def test_cli_accepts_stop_after_max_files(tmp_path):
