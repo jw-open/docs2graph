@@ -164,9 +164,11 @@ def build_corpus_graph(
         edges.append(make_edge(manifest_id, skipped_id, "skipped"))
 
     runtime_skipped_by_reason: Dict[str, int] = {}
-    runtime_skipped_samples = 0
+    runtime_reported_skips = 0
     extracted_file_count = 0
     extracted_total_bytes = 0
+    total_report_limit = max(0, skip_report_limit)
+    budget_exhausted = False
 
     for file_path in files:
         rel = file_path.relative_to(root).as_posix()
@@ -184,26 +186,38 @@ def build_corpus_graph(
         nodes.append(make_node(file_id, file_path.name, attributes=attrs))
         edges.append(make_edge(parent_id, file_id, "contains"))
 
-        if max_file_bytes is not None and size is not None and size > max_file_bytes:
-            skipped_id = _id("skipped_file", rel)
-            _count_skip(runtime_skipped_by_reason, "file_too_large")
-            nodes.append(
-                make_node(
-                    skipped_id,
-                    f"Skipped {file_path.name}",
-                    attributes={
-                        "type": "skipped_file",
-                        "source": str(file_path),
-                        "relative_path": rel,
-                        "reason": "file_too_large",
-                        "max_file_bytes": max_file_bytes,
-                        "size_bytes": size,
-                        "extraction_method": "static",
-                    },
-                )
+        if budget_exhausted:
+            runtime_reported_skips += _add_runtime_skip(
+                nodes,
+                edges,
+                file_id,
+                file_path,
+                rel,
+                "max_total_bytes_exceeded",
+                runtime_skipped_by_reason,
+                total_report_limit=total_report_limit,
+                existing_reported_count=len(scan.skipped_samples) + runtime_reported_skips,
+                attributes={
+                    "max_total_bytes": max_total_bytes,
+                    "current_total_bytes": extracted_total_bytes,
+                    "size_bytes": size,
+                },
             )
-            edges.append(make_edge(file_id, skipped_id, "skipped"))
-            runtime_skipped_samples += 1
+            continue
+
+        if max_file_bytes is not None and size is not None and size > max_file_bytes:
+            runtime_reported_skips += _add_runtime_skip(
+                nodes,
+                edges,
+                file_id,
+                file_path,
+                rel,
+                "file_too_large",
+                runtime_skipped_by_reason,
+                total_report_limit=total_report_limit,
+                existing_reported_count=len(scan.skipped_samples) + runtime_reported_skips,
+                attributes={"max_file_bytes": max_file_bytes, "size_bytes": size},
+            )
             continue
 
         if (
@@ -211,26 +225,23 @@ def build_corpus_graph(
             and size is not None
             and extracted_total_bytes + size > max_total_bytes
         ):
-            skipped_id = _id("skipped_file", f"max_total_bytes_exceeded:{rel}")
-            _count_skip(runtime_skipped_by_reason, "max_total_bytes_exceeded")
-            nodes.append(
-                make_node(
-                    skipped_id,
-                    f"Skipped {file_path.name}",
-                    attributes={
-                        "type": "skipped_file",
-                        "source": str(file_path),
-                        "relative_path": rel,
-                        "reason": "max_total_bytes_exceeded",
-                        "max_total_bytes": max_total_bytes,
-                        "current_total_bytes": extracted_total_bytes,
-                        "size_bytes": size,
-                        "extraction_method": "static",
-                    },
-                )
+            budget_exhausted = True
+            runtime_reported_skips += _add_runtime_skip(
+                nodes,
+                edges,
+                file_id,
+                file_path,
+                rel,
+                "max_total_bytes_exceeded",
+                runtime_skipped_by_reason,
+                total_report_limit=total_report_limit,
+                existing_reported_count=len(scan.skipped_samples) + runtime_reported_skips,
+                attributes={
+                    "max_total_bytes": max_total_bytes,
+                    "current_total_bytes": extracted_total_bytes,
+                    "size_bytes": size,
+                },
             )
-            edges.append(make_edge(file_id, skipped_id, "skipped"))
-            runtime_skipped_samples += 1
             continue
 
         try:
@@ -258,24 +269,25 @@ def build_corpus_graph(
                     }
                     cache_stats["writes"] += 1
         except Exception as exc:  # keep batch extraction useful on mixed corpora
-            error_id = _id("load_error", f"{rel}:{type(exc).__name__}:{exc}")
             _count_skip(runtime_skipped_by_reason, "load_error")
-            nodes.append(
-                make_node(
-                    error_id,
-                    f"{type(exc).__name__}: {file_path.name}",
-                    content=str(exc),
-                    attributes={
-                        "type": "load_error",
-                        "source": str(file_path),
-                        "relative_path": rel,
-                        "error_type": type(exc).__name__,
-                        "extraction_method": "static",
-                    },
+            if len(scan.skipped_samples) + runtime_reported_skips < total_report_limit:
+                error_id = _id("load_error", f"{rel}:{type(exc).__name__}:{exc}")
+                nodes.append(
+                    make_node(
+                        error_id,
+                        f"{type(exc).__name__}: {file_path.name}",
+                        content=str(exc),
+                        attributes={
+                            "type": "load_error",
+                            "source": str(file_path),
+                            "relative_path": rel,
+                            "error_type": type(exc).__name__,
+                            "extraction_method": "static",
+                        },
+                    )
                 )
-            )
-            edges.append(make_edge(file_id, error_id, "failed_to_extract"))
-            runtime_skipped_samples += 1
+                edges.append(make_edge(file_id, error_id, "failed_to_extract"))
+                runtime_reported_skips += 1
             continue
 
         graph_root = graph.get("current_node_id")
@@ -292,7 +304,7 @@ def build_corpus_graph(
         scan.skipped_count += count
     manifest_attrs["skipped_file_count"] = scan.skipped_count
     manifest_attrs["skipped_by_reason"] = dict(sorted(scan.skipped_by_reason.items()))
-    manifest_attrs["reported_skipped_file_count"] = len(scan.skipped_samples) + runtime_skipped_samples
+    manifest_attrs["reported_skipped_file_count"] = len(scan.skipped_samples) + runtime_reported_skips
     manifest_attrs["max_total_bytes_reached"] = (
         scan.skipped_by_reason.get("max_total_bytes_exceeded", 0) > 0
     )
@@ -579,6 +591,37 @@ def _write_cache(cache_path: str | Path, cache: Dict[str, Any]) -> None:
         encoding="utf-8",
     )
     temp.replace(path)
+
+
+def _add_runtime_skip(
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    file_id: str,
+    file_path: Path,
+    rel: str,
+    reason: str,
+    counts: Dict[str, int],
+    *,
+    total_report_limit: int,
+    existing_reported_count: int,
+    attributes: Dict[str, Any] | None = None,
+) -> int:
+    _count_skip(counts, reason)
+    if existing_reported_count >= total_report_limit:
+        return 0
+    skipped_id = _id("skipped_file", f"{reason}:{rel}")
+    skip_attrs = {
+        "type": "skipped_file",
+        "source": str(file_path),
+        "relative_path": rel,
+        "reason": reason,
+        "extraction_method": "static",
+    }
+    if attributes:
+        skip_attrs.update(attributes)
+    nodes.append(make_node(skipped_id, f"Skipped {file_path.name}", attributes=skip_attrs))
+    edges.append(make_edge(file_id, skipped_id, "skipped"))
+    return 1
 
 
 def _record_skipped(

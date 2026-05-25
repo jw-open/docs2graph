@@ -91,8 +91,9 @@ Large corpora are handled by deterministic limits:
 - `--max-total-bytes -1`: disable the cumulative byte guard.
 - `--no-recursive`: only process files directly under the directory.
 - `--include` / `--exclude`: repeatable glob filters for folder subsets.
-- `--skip-report-limit N`: cap the number of omitted files listed as
-  `skipped_file` nodes while still preserving aggregate skip counts.
+- `--skip-report-limit N`: cap the total number of omitted files listed as
+  `skipped_file` or extraction-error nodes while still preserving aggregate
+  skip counts.
 - `--cache PATH`: opt into a JSON cache that reuses unchanged per-file graph
   extraction across repeated corpus runs.
 - `--refresh-cache`: rebuild cached entries while writing an updated cache.
