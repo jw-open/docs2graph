@@ -19,7 +19,7 @@ from typing import Optional
 
 from .text import load_text
 
-# Map file extension → language name (for tagging)
+# Map file extension -> language name (for tagging)
 _EXT_TO_LANG: dict = {
     ".py":    "python",
     ".js":    "javascript",
@@ -52,6 +52,8 @@ _EXT_TO_LANG: dict = {
     ".xml":   "xml",
     ".md":    "markdown",
 }
+
+CODE_SUFFIXES = frozenset(_EXT_TO_LANG)
 
 
 def detect_language(path: str) -> Optional[str]:

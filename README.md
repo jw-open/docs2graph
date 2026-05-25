@@ -62,6 +62,7 @@ doc2graph ./docs --graph all --output docs-corpus.graph.json
 - PDF: native embedded text via `pypdf`, with OCR fallback for scanned PDFs
 - Images/charts: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.tif`, `.tiff`, `.bmp` via OCR and media metadata
 - URLs: generic text/HTML URLs and public/exportable Google Docs, Sheets, and Slides URLs
+- Source/config files: Python, JavaScript/TypeScript, SQL, YAML, JSON, TOML, shell, and other common text code formats
 - Directories: recursive mixed-format corpora with folder/file provenance nodes
 
 Private Google Workspace documents require either public export access or
@@ -208,7 +209,7 @@ doc2graph/
 │   │   ├── pdf.py           # PDF → plain text
 │   │   ├── markdown.py      # Markdown → structured sections
 │   │   ├── html.py          # HTML → text + links
-│   │   └── code.py          # Python/JS/etc → AST-based extraction
+│   │   └── code.py          # Python/JS/etc → tagged plain-text loading
 │   ├── extractors/
 │   │   ├── entity.py        # entity extraction (rule-based + optional spacy)
 │   │   ├── relation.py      # relationship extraction

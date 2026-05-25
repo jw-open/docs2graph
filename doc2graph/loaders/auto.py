@@ -23,6 +23,13 @@ def load_document(path: str) -> str:
     p = Path(path)
     suffix = p.suffix.lower()
 
+    from .code import CODE_SUFFIXES
+
+    if suffix in CODE_SUFFIXES and suffix not in {".md", ".markdown", ".mdx"}:
+        from .code import load_code
+
+        return load_code(path)
+
     if suffix in {".md", ".markdown", ".mdx"}:
         from .markdown import load_markdown
 

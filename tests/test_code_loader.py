@@ -1,6 +1,8 @@
 """Tests for the source code loader."""
 
 import pytest
+from doc2graph.corpus import build_corpus_graph
+from doc2graph.loaders.auto import load_document
 from doc2graph.loaders.code import load_code, detect_language
 
 
@@ -81,3 +83,40 @@ class TestLoadCode:
         text = load_code(str(f))
         assert "# language: sql" in text
         assert "SELECT" in text
+
+
+def test_auto_loader_uses_code_loader_for_source_files(tmp_path):
+    f = tmp_path / "main.py"
+    f.write_text("def hello():\n    return 'hi'\n")
+
+    text = load_document(str(f))
+
+    assert text.startswith("# language: python")
+    assert "def hello" in text
+
+
+def test_directory_corpus_includes_supported_code_files(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "main.py").write_text("def build_graph():\n    return 'graph'\n")
+    (docs / "notes.bin").write_bytes(b"\x00")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", skip_report_limit=10)
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    document_nodes = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "document"
+        and n.get("attributes", {}).get("source", "").endswith("main.py")
+    ]
+
+    assert file_paths == ["main.py"]
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["skipped_by_reason"] == {"unsupported_extension": 1}
+    assert document_nodes
+    assert document_nodes[0]["content"].startswith("# language: python")

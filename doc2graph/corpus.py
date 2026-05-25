@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 
 from .types import make_edge, make_node
+from .loaders.code import CODE_SUFFIXES
 
 SUPPORTED_SUFFIXES = {
     ".md",
@@ -32,7 +33,7 @@ SUPPORTED_SUFFIXES = {
     ".bmp",
     ".gif",
     ".webp",
-}
+} | CODE_SUFFIXES
 
 DEFAULT_IGNORE_PATTERNS = (
     ".git",
