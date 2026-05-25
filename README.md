@@ -242,7 +242,8 @@ provenance. This prevents corpus merges from silently dropping same-named
 sections, claims, decision nodes, citations, references, URLs, or schema
 tables from later files.
 
-Decision extraction recognizes common ADR context bullets such as
+Decision extraction recognizes common ADR context bullets and standalone
+prefixed lines such as
 `Constraint:`, `Assumption:`, `Decision driver:`, and `Rationale:` as context
 instead of generic decision text, then links them to the problem with
 `has_context` and to later decision nodes with `informed_by`. This keeps the

@@ -122,6 +122,17 @@ HEADINGLESS_CONTEXT_DECISION = """- Problem: repeated corpus extraction wastes t
 """
 
 
+PREFIXED_LINE_DECISION = """Problem: repeated scans of large folders waste time.
+Constraint: default graph generation must stay deterministic and offline.
+Option A: always rebuild every file graph.
+Option B: reuse unchanged per-file graph entries.
+Status: Accepted
+Decision: choose Option B for explicit cache paths only.
+Consequence: warm runs avoid unnecessary extraction.
+Confidence: high.
+"""
+
+
 def _skip_records_sha256(records):
     digest = hashlib.sha256()
     for reason, path_type, relative_path in records:
@@ -445,6 +456,49 @@ def test_extract_decision_graph_classifies_headingless_context_bullets():
     assert all(node["id"] in informed_by_targets for node in context_nodes)
     assert any(
         e["from"] == problem["id"] and e["to"] in {n["id"] for n in context_nodes} and e["label"] == "has_context"
+        for e in graph["edges"]
+    )
+
+
+def test_extract_decision_graph_classifies_standalone_prefixed_lines():
+    graph = extract_decision_graph(PREFIXED_LINE_DECISION, source="prefixed-adr.md")
+    nodes = graph["nodes"]
+    node_types = {n.get("attributes", {}).get("type") for n in nodes}
+    labels = {e["label"] for e in graph["edges"]}
+    status = next(n for n in nodes if n["label"] == "Status: Accepted")
+    option_b = next(n for n in nodes if n["label"] == "Option B: reuse unchanged per-file graph entries.")
+    decision = next(n for n in nodes if n["label"] == "Decision: choose Option B for explicit cache paths only.")
+    consequence = next(n for n in nodes if n["label"] == "Consequence: warm runs avoid unnecessary extraction.")
+    confidence = next(n for n in nodes if n["label"] == "Confidence: high.")
+
+    assert {"problem", "context", "option", "decision", "consequence", "confidence"} <= node_types
+    assert {"has_option", "resolved_by", "selects", "has_consequence", "has_confidence"} <= labels
+    assert status["attributes"]["type"] == "decision"
+    assert status["attributes"]["decision_status"] == "accepted"
+    assert any(e["from"] == decision["id"] and e["to"] == option_b["id"] and e["label"] == "selects" for e in graph["edges"])
+    assert any(e["from"] == decision["id"] and e["to"] == consequence["id"] and e["label"] == "has_consequence" for e in graph["edges"])
+    assert any(e["from"] == decision["id"] and e["to"] == confidence["id"] and e["label"] == "has_confidence" for e in graph["edges"])
+
+
+def test_extract_decision_graph_preserves_mixed_item_order():
+    text = """# Decision Notes
+
+Problem: corpus cache invalidation needs an explicit policy.
+Option A: reuse entries by modification time only.
+Option B: validate content hashes before reuse.
+Decision: choose Option B.
+- Consequence: warm cache runs avoid stale graph output.
+"""
+    graph = extract_decision_graph(text, source="mixed-order-adr.md")
+    decision = next(n for n in graph["nodes"] if n["label"] == "Decision: choose Option B.")
+    consequence = next(
+        n
+        for n in graph["nodes"]
+        if n["label"] == "Consequence: warm cache runs avoid stale graph output."
+    )
+
+    assert any(
+        e["from"] == decision["id"] and e["to"] == consequence["id"] and e["label"] == "has_consequence"
         for e in graph["edges"]
     )
 

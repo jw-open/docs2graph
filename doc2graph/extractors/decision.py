@@ -10,7 +10,24 @@ from ..types import GraphDict, make_edge, make_node
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 _BULLET_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(.+)$", re.MULTILINE)
+_BULLET_LINE_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(.+)$")
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
+_PREFIXED_LINE_RE = re.compile(
+    r"^\s*"
+    r"("
+    r"problem|challenge|issue|motivation|"
+    r"context|background|goals?|requirements?|constraints?|assumptions?|"
+    r"drivers?|decision drivers?|rationale|reasons?|non[- ]goals?|"
+    r"options?(?:\s+[a-z0-9]+)?|alternatives?(?:\s+[a-z0-9]+)?|"
+    r"approaches?(?:\s+[a-z0-9]+)?|solutions?(?:\s+[a-z0-9]+)?|"
+    r"pros?|benefits?|advantages?|cons?|drawbacks?|cost|risks?|"
+    r"trade-?offs?|considerations?|"
+    r"decision|choose|chosen|selected|status|"
+    r"consequences?|impact|outcomes?|results?|confidence|certainty|confidence level"
+    r")"
+    r"\s*:\s*(\S.*)$",
+    re.IGNORECASE,
+)
 
 _SECTION_TYPES = {
     "problem": ("problem", "challenge", "motivation", "issue"),
@@ -168,56 +185,30 @@ def extract_decision_graph(text: str, source: str = "") -> GraphDict:
             selected_option_id = result.get("selected_option_id") or selected_option_id
             current_decision_id = result.get("current_decision_id") or current_decision_id
 
-        for bullet_index, bullet in enumerate(_BULLET_RE.findall(section["content"])):
-            bullet_kind = _classify_bullet(bullet, default=kind)
-            bullet_id = _source_node_id(bullet_kind, f"{index}-{bullet_index}-{bullet}", source)
-            attrs = {
-                "type": bullet_kind,
-                "source": source,
-                "document_id": root_id,
-                "section": section["title"],
-                "extraction_method": "static",
-            }
-            if bullet_kind == "decision":
-                status = _decision_status("", bullet)
-                if status:
-                    attrs["decision_status"] = status
-            _add_node(nodes, seen_nodes, bullet_id, _label(bullet), bullet, attrs)
-            _add_edge(edges, seen_edges, section_id, bullet_id, "contains")
-
-            if bullet_kind == "problem":
-                last_problem_id = bullet_id
-            elif bullet_kind == "context":
-                context_ids.append(bullet_id)
-                if last_problem_id:
-                    _add_edge(edges, seen_edges, last_problem_id, bullet_id, "has_context")
-                if current_decision_id:
-                    _add_edge(edges, seen_edges, current_decision_id, bullet_id, "informed_by")
-            elif bullet_kind == "option":
-                current_option_id = bullet_id
-                option_records.append({"id": bullet_id, "title": bullet, "content": bullet})
-                if last_problem_id:
-                    _add_edge(edges, seen_edges, last_problem_id, bullet_id, "has_option")
-            elif bullet_kind in {"pros", "cons", "tradeoff"} and current_option_id:
-                _add_edge(edges, seen_edges, current_option_id, bullet_id, bullet_kind)
-            elif bullet_kind == "decision":
-                current_decision_id = bullet_id
-                if last_problem_id:
-                    _add_edge(edges, seen_edges, last_problem_id, bullet_id, "resolved_by")
-                selected_option_id = _select_option_id(bullet, option_records) or current_option_id
-                if selected_option_id:
-                    _add_edge(edges, seen_edges, bullet_id, selected_option_id, "selects")
-                for context_id in context_ids:
-                    _add_edge(edges, seen_edges, bullet_id, context_id, "informed_by")
-            elif bullet_kind == "consequence":
-                if current_decision_id:
-                    _add_edge(edges, seen_edges, current_decision_id, bullet_id, "has_consequence")
-                if selected_option_id:
-                    _add_edge(edges, seen_edges, selected_option_id, bullet_id, "has_consequence")
-                elif current_option_id:
-                    _add_edge(edges, seen_edges, current_option_id, bullet_id, "has_consequence")
-            elif bullet_kind == "confidence" and current_decision_id:
-                _add_edge(edges, seen_edges, current_decision_id, bullet_id, "has_confidence")
+        for line_index, item in _extract_decision_items(section["content"]):
+            state = _add_decision_item(
+                nodes,
+                edges,
+                seen_nodes,
+                seen_edges,
+                text=item,
+                default_kind=kind,
+                item_key=f"{index}-line-{line_index}-{item}",
+                source=source,
+                root_id=root_id,
+                section_id=section_id,
+                section_title=section["title"],
+                last_problem_id=last_problem_id,
+                current_option_id=current_option_id,
+                selected_option_id=selected_option_id,
+                current_decision_id=current_decision_id,
+                context_ids=context_ids,
+                option_records=option_records,
+            )
+            last_problem_id = state["last_problem_id"]
+            current_option_id = state["current_option_id"]
+            selected_option_id = state["selected_option_id"]
+            current_decision_id = state["current_decision_id"]
 
     return {"nodes": nodes, "edges": edges, "current_node_id": root_id}
 
@@ -260,15 +251,24 @@ def _classify_bullet(text: str, default: str) -> str:
     lower = text.lower()
     if lower.startswith(("problem:", "challenge:", "issue:", "motivation:")):
         return "problem"
-    if lower.startswith(("option:", "alternative:", "approach:", "solution:")):
+    if lower.startswith((
+        "option:",
+        "options:",
+        "alternative:",
+        "alternatives:",
+        "approach:",
+        "approaches:",
+        "solution:",
+        "solutions:",
+    )):
         return "option"
     if re.match(r"^(?:option|alternative|approach|solution)\s+[a-z0-9]+[:.)-]", lower):
         return "option"
-    if lower.startswith(("pro:", "benefit:", "advantage:")):
+    if lower.startswith(("pro:", "pros:", "benefit:", "benefits:", "advantage:", "advantages:")):
         return "pros"
     if lower.startswith(("risk:", "risk -", "risk.")):
         return "consequence" if default == "consequence" else "cons"
-    if lower.startswith(("con:", "drawback:", "cost:")):
+    if lower.startswith(("con:", "cons:", "drawback:", "drawbacks:", "cost:")):
         return "cons"
     if "tradeoff" in lower or "trade-off" in lower or "but " in lower:
         return "tradeoff"
@@ -300,11 +300,106 @@ def _classify_bullet(text: str, default: str) -> str:
         return "context"
     if _decision_status("", text):
         return "decision"
-    if lower.startswith(("consequence:", "impact:", "result:", "risk:")):
+    if lower.startswith(("consequence:", "consequences:", "impact:", "outcome:", "outcomes:", "result:", "results:", "risk:")):
         return "consequence"
     if lower.startswith(("confidence:", "certainty:", "confidence level:")):
         return "confidence"
     return default
+
+
+def _extract_decision_items(text: str) -> List[tuple[int, str]]:
+    items: List[tuple[int, str]] = []
+    for line_index, raw_line in enumerate(text.splitlines()):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith(("|", "#")):
+            continue
+        bullet_match = _BULLET_LINE_RE.match(line)
+        if bullet_match:
+            items.append((line_index, bullet_match.group(1).strip()))
+            continue
+        if _PREFIXED_LINE_RE.match(line):
+            items.append((line_index, line))
+    return items
+
+
+def _add_decision_item(
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    seen_nodes: set,
+    seen_edges: set,
+    *,
+    text: str,
+    default_kind: str,
+    item_key: str,
+    source: str,
+    root_id: str,
+    section_id: str,
+    section_title: str,
+    last_problem_id: Optional[str],
+    current_option_id: Optional[str],
+    selected_option_id: Optional[str],
+    current_decision_id: Optional[str],
+    context_ids: List[str],
+    option_records: List[Dict[str, str]],
+) -> Dict[str, Optional[str]]:
+    item_kind = _classify_bullet(text, default=default_kind)
+    item_id = _source_node_id(item_kind, item_key, source)
+    attrs = {
+        "type": item_kind,
+        "source": source,
+        "document_id": root_id,
+        "section": section_title,
+        "extraction_method": "static",
+    }
+    if item_kind == "decision":
+        status = _decision_status("", text)
+        if status:
+            attrs["decision_status"] = status
+    _add_node(nodes, seen_nodes, item_id, _label(text), text, attrs)
+    _add_edge(edges, seen_edges, section_id, item_id, "contains")
+
+    if item_kind == "problem":
+        last_problem_id = item_id
+    elif item_kind == "context":
+        context_ids.append(item_id)
+        if last_problem_id:
+            _add_edge(edges, seen_edges, last_problem_id, item_id, "has_context")
+        if current_decision_id:
+            _add_edge(edges, seen_edges, current_decision_id, item_id, "informed_by")
+    elif item_kind == "option":
+        current_option_id = item_id
+        option_records.append({"id": item_id, "title": text, "content": text})
+        if last_problem_id:
+            _add_edge(edges, seen_edges, last_problem_id, item_id, "has_option")
+    elif item_kind in {"pros", "cons", "tradeoff"} and current_option_id:
+        _add_edge(edges, seen_edges, current_option_id, item_id, item_kind)
+    elif item_kind == "decision":
+        current_decision_id = item_id
+        if last_problem_id:
+            _add_edge(edges, seen_edges, last_problem_id, item_id, "resolved_by")
+        selected_option_id = _select_option_id(text, option_records) or current_option_id
+        if selected_option_id:
+            _add_edge(edges, seen_edges, item_id, selected_option_id, "selects")
+        for context_id in context_ids:
+            _add_edge(edges, seen_edges, item_id, context_id, "informed_by")
+    elif item_kind == "consequence":
+        if current_decision_id:
+            _add_edge(edges, seen_edges, current_decision_id, item_id, "has_consequence")
+        if selected_option_id:
+            _add_edge(edges, seen_edges, selected_option_id, item_id, "has_consequence")
+        elif current_option_id:
+            _add_edge(edges, seen_edges, current_option_id, item_id, "has_consequence")
+    elif item_kind == "confidence" and current_decision_id:
+        _add_edge(edges, seen_edges, current_decision_id, item_id, "has_confidence")
+
+    return {
+        "last_problem_id": last_problem_id,
+        "current_option_id": current_option_id,
+        "selected_option_id": selected_option_id,
+        "current_decision_id": current_decision_id,
+    }
 
 
 def _decision_status(title: str, content: str) -> Optional[str]:
