@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
@@ -63,6 +64,8 @@ def build_corpus_graph(
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
     skip_report_limit: int = 100,
+    cache_path: str | Path | None = None,
+    refresh_cache: bool = False,
 ) -> Dict[str, Any]:
     """Build one graph from a file, URL, or directory corpus."""
     from .loaders.url import is_url
@@ -86,6 +89,15 @@ def build_corpus_graph(
         skip_report_limit=skip_report_limit,
     )
     files = scan.files
+    cache = _load_cache(cache_path) if cache_path is not None else _empty_cache()
+    cache_stats = {
+        "enabled": cache_path is not None,
+        "path": str(cache_path) if cache_path is not None else None,
+        "hits": 0,
+        "misses": 0,
+        "writes": 0,
+        "refresh": refresh_cache,
+    }
 
     root_id = _id("corpus", str(root.resolve()))
     manifest_id = _id("corpus_manifest", str(root.resolve()))
@@ -100,6 +112,12 @@ def build_corpus_graph(
         "max_files_reached": scan.skipped_by_reason.get("max_files_exceeded", 0) > 0,
         "recursive": recursive,
         "extraction_method": "static",
+        "cache_enabled": cache_stats["enabled"],
+        "cache_path": cache_stats["path"],
+        "cache_hits": cache_stats["hits"],
+        "cache_misses": cache_stats["misses"],
+        "cache_writes": cache_stats["writes"],
+        "cache_refresh": cache_stats["refresh"],
     }
     nodes: List[Dict[str, Any]] = [
         make_node(
@@ -180,7 +198,29 @@ def build_corpus_graph(
             continue
 
         try:
-            graph = build_file_graph(str(file_path), graph_type)
+            graph = None
+            cache_key = _cache_key(root, file_path, graph_type)
+            metadata = _file_metadata(root, file_path, graph_type)
+            if cache_path is not None and not refresh_cache:
+                cached = cache.get("entries", {}).get(cache_key)
+                if (
+                    isinstance(cached, dict)
+                    and cached.get("metadata") == metadata
+                    and isinstance(cached.get("graph"), dict)
+                ):
+                    graph = cached.get("graph")
+                    cache_stats["hits"] += 1
+
+            if graph is None:
+                if cache_path is not None:
+                    cache_stats["misses"] += 1
+                graph = build_file_graph(str(file_path), graph_type)
+                if cache_path is not None:
+                    cache.setdefault("entries", {})[cache_key] = {
+                        "metadata": metadata,
+                        "graph": graph,
+                    }
+                    cache_stats["writes"] += 1
         except Exception as exc:  # keep batch extraction useful on mixed corpora
             error_id = _id("load_error", f"{rel}:{type(exc).__name__}:{exc}")
             _count_skip(runtime_skipped_by_reason, "load_error")
@@ -214,7 +254,12 @@ def build_corpus_graph(
     manifest_attrs["skipped_file_count"] = scan.skipped_count
     manifest_attrs["skipped_by_reason"] = dict(sorted(scan.skipped_by_reason.items()))
     manifest_attrs["reported_skipped_file_count"] = len(scan.skipped_samples) + runtime_skipped_samples
+    manifest_attrs["cache_hits"] = cache_stats["hits"]
+    manifest_attrs["cache_misses"] = cache_stats["misses"]
+    manifest_attrs["cache_writes"] = cache_stats["writes"]
     nodes[0]["attributes"]["skipped_file_count"] = scan.skipped_count
+    if cache_path is not None:
+        _write_cache(cache_path, cache)
     return _merge_graphs([corpus_graph, *graph_parts])
 
 
@@ -373,6 +418,55 @@ def _safe_size(path: Path) -> int | None:
         return path.stat().st_size
     except OSError:
         return None
+
+
+def _file_metadata(root: Path, path: Path, graph_type: str) -> Dict[str, Any]:
+    stat = path.stat()
+    return {
+        "root": str(root.resolve()),
+        "relative_path": path.relative_to(root).as_posix(),
+        "graph_type": graph_type,
+        "size_bytes": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+        "suffix": path.suffix.lower(),
+    }
+
+
+def _cache_key(root: Path, path: Path, graph_type: str) -> str:
+    rel = path.relative_to(root).as_posix()
+    source = f"{root.resolve()}\0{rel}\0{graph_type}".encode("utf-8")
+    digest = hashlib.sha1(source).hexdigest()
+    return digest
+
+
+def _empty_cache() -> Dict[str, Any]:
+    return {"version": 1, "entries": {}}
+
+
+def _load_cache(cache_path: str | Path | None) -> Dict[str, Any]:
+    if cache_path is None:
+        return _empty_cache()
+    path = Path(cache_path)
+    if not path.exists():
+        return _empty_cache()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _empty_cache()
+    if payload.get("version") != 1 or not isinstance(payload.get("entries"), dict):
+        return _empty_cache()
+    return payload
+
+
+def _write_cache(cache_path: str | Path, cache: Dict[str, Any]) -> None:
+    path = Path(cache_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f"{path.name}.tmp")
+    temp.write_text(
+        json.dumps(cache, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    temp.replace(path)
 
 
 def _record_skipped(result: CorpusScan, path: Path, rel: str, reason: str, report_limit: int) -> None:

@@ -206,3 +206,39 @@ def test_directory_scan_prunes_default_ignored_directories(tmp_path):
     }
 
     assert file_paths == {"visible.md"}
+
+
+def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    first = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    second = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    refreshed = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        cache_path=cache,
+        refresh_cache=True,
+    )
+
+    first_manifest = next(n for n in first["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    second_manifest = next(n for n in second["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    refreshed_manifest = next(
+        n for n in refreshed["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest"
+    )
+
+    assert cache.exists()
+    assert first_manifest["attributes"]["cache_enabled"] is True
+    assert first_manifest["attributes"]["cache_hits"] == 0
+    assert first_manifest["attributes"]["cache_misses"] == 2
+    assert first_manifest["attributes"]["cache_writes"] == 2
+    assert second_manifest["attributes"]["cache_hits"] == 2
+    assert second_manifest["attributes"]["cache_misses"] == 0
+    assert second_manifest["attributes"]["cache_writes"] == 0
+    assert refreshed_manifest["attributes"]["cache_refresh"] is True
+    assert refreshed_manifest["attributes"]["cache_hits"] == 0
+    assert refreshed_manifest["attributes"]["cache_misses"] == 2
+    assert refreshed_manifest["attributes"]["cache_writes"] == 2

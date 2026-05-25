@@ -76,6 +76,15 @@ def main(argv: List[str] | None = None) -> int:
         default=100,
         help="Maximum number of skipped directory files to list as skipped_file nodes",
     )
+    parser.add_argument(
+        "--cache",
+        help="Optional corpus cache JSON path for reusing unchanged per-file graph extraction",
+    )
+    parser.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help="Rebuild cached per-file graphs instead of reading existing cache entries",
+    )
     args = parser.parse_args(argv)
 
     max_file_bytes = None if args.max_file_bytes < 0 else args.max_file_bytes
@@ -88,6 +97,8 @@ def main(argv: List[str] | None = None) -> int:
         include=args.include,
         exclude=args.exclude,
         skip_report_limit=args.skip_report_limit,
+        cache_path=args.cache,
+        refresh_cache=args.refresh_cache,
     )
     payload = json.dumps(graph, indent=2 if args.pretty else None, sort_keys=args.pretty)
     if args.output:
