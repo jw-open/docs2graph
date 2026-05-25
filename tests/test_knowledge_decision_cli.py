@@ -200,6 +200,42 @@ def test_directory_corpus_reports_skipped_files_and_manifest(tmp_path):
     assert {n["attributes"]["reason"] for n in skipped} == {"max_files_exceeded", "unsupported_extension"}
 
 
+def test_directory_corpus_reports_supported_files_outside_include(tmp_path):
+    docs = tmp_path / "docs"
+    adr = docs / "adr"
+    notes = docs / "notes"
+    adr.mkdir(parents=True)
+    notes.mkdir()
+    (adr / "accepted.md").write_text("# Accepted\n\nChosen option.", encoding="utf-8")
+    (notes / "draft.md").write_text("# Draft\n\nNot part of the ADR graph.", encoding="utf-8")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        include=["adr/**"],
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "include_filter_mismatch"
+    ]
+
+    assert manifest["attributes"]["include_patterns"] == ["adr/**"]
+    assert manifest["attributes"]["exclude_patterns"] == []
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["skipped_by_reason"] == {"include_filter_mismatch": 1}
+    assert file_paths == ["adr/accepted.md"]
+    assert skipped[0]["attributes"]["relative_path"] == "notes/draft.md"
+
+
 def test_directory_corpus_skip_report_limit_bounds_nodes(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()

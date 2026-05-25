@@ -112,6 +112,8 @@ def build_corpus_graph(
         "selected_file_count": len(files),
         "skipped_file_count": scan.skipped_count,
         "skipped_by_reason": dict(sorted(scan.skipped_by_reason.items())),
+        "include_patterns": list(include or ()),
+        "exclude_patterns": list(exclude or ()),
         "skip_report_limit": skip_report_limit,
         "max_files": max_files,
         "max_files_reached": scan.skipped_by_reason.get("max_files_exceeded", 0) > 0,
@@ -373,10 +375,11 @@ def scan_document_files(
         report_limit=report_limit,
     ):
         rel = path.relative_to(root).as_posix()
-        if patterns and not any(fnmatch.fnmatch(rel, pattern) for pattern in patterns):
-            continue
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
             _record_skipped(result, path, rel, "unsupported_extension", report_limit)
+            continue
+        if patterns and not any(fnmatch.fnmatch(rel, pattern) for pattern in patterns):
+            _record_skipped(result, path, rel, "include_filter_mismatch", report_limit)
             continue
         if max_files is not None and len(result.files) >= max_files:
             _record_skipped(result, path, rel, "max_files_exceeded", report_limit)
