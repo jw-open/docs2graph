@@ -1,8 +1,8 @@
-"""Markdown file loader — returns raw text."""
+"""Markdown file loader -- returns raw text with text-loader encoding support."""
 
-from pathlib import Path
+from .text import load_text
 
 
 def load_markdown(path: str) -> str:
     """Read a Markdown file and return its contents as a string."""
-    return Path(path).read_text(encoding="utf-8")
+    return load_text(path)

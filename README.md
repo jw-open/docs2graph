@@ -58,6 +58,7 @@ doc2graph ./docs --graph all --output docs-corpus.graph.json
 ### Supported sources
 
 - Local text-like files: `.md`, `.mdx`, `.txt`, `.html`, `.csv`, `.tsv`
+  with BOM-aware and best-effort legacy encoding handling
 - Office-style files with extras: `.docx`, `.pptx`
 - PDF: native embedded text via `pypdf`, with OCR fallback for scanned PDFs
 - Images/charts: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.tif`, `.tiff`, `.bmp` via OCR and media metadata

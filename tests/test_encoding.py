@@ -6,6 +6,8 @@ import pytest
 from doc2graph.loaders.text import load_text, _detect_encoding
 from doc2graph.loaders.html import load_html
 from doc2graph.loaders.csv import load_csv
+from doc2graph.loaders.auto import load_document
+from doc2graph.loaders.markdown import load_markdown
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +85,30 @@ class TestLoadTextEncoding:
         text = load_text(str(f))
         assert "Hello" in text
         assert "world" in text  # didn't crash
+
+
+# ---------------------------------------------------------------------------
+# Markdown loader auto-detection
+# ---------------------------------------------------------------------------
+
+class TestMarkdownEncoding:
+    def test_utf8_bom_markdown(self, tmp_path):
+        f = tmp_path / "doc.md"
+        f.write_bytes(b"\xef\xbb\xbf# Title\n\nBOM content")
+
+        text = load_markdown(str(f))
+
+        assert text.startswith("# Title")
+        assert "\ufeff" not in text
+
+    def test_latin1_markdown_uses_text_loader_detection(self, tmp_path):
+        f = tmp_path / "legacy.md"
+        f.write_bytes("# R\xe9sum\xe9\n\nRen\xe9 writes notes.".encode("iso-8859-1"))
+
+        text = load_document(str(f))
+
+        assert "René" in text
+        assert "notes" in text
 
 
 # ---------------------------------------------------------------------------
