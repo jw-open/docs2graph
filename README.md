@@ -79,6 +79,7 @@ doc2graph ./knowledge-base --graph decision --include "adr/**" --output adr.grap
 doc2graph ./exports --graph all --max-files 500 --max-file-bytes 10485760
 doc2graph ./exports --graph all --max-total-bytes 1073741824 --output corpus.graph.json
 doc2graph ./exports --graph all --max-depth 2 --output corpus.graph.json
+doc2graph ./exports --graph all --max-scan-entries 100000 --output corpus.graph.json
 doc2graph ./exports --graph all --skip-report-limit 25 --output corpus.graph.json
 doc2graph ./exports --graph all --cache .doc2graph-cache.json --output corpus.graph.json
 ```
@@ -94,6 +95,11 @@ Large corpora are handled by deterministic limits:
 - `--no-recursive`: only process files directly under the directory.
 - `--max-depth N`: bound recursive descent by subdirectory depth; `0` keeps
   only files directly under the corpus root and reports pruned directories.
+- `--max-scan-entries N`: stop the deterministic directory walk after
+  inspecting N filesystem entries. This intentionally truncates traversal for
+  very large trees; the manifest marks `max_scan_entries_reached` and
+  `skipped_file_count_is_complete: false` because unvisited paths are not fully
+  counted.
 - `--include` / `--exclude`: repeatable glob filters for folder subsets.
   Supported files outside an include filter are counted as
   `include_filter_mismatch` skips, with bounded sample nodes. Paths matched by
@@ -120,7 +126,8 @@ selection.
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, skipped-file counts, cache hit/miss/write counts when caching is
 enabled, stale cache entries pruned for the current root and graph type,
-active include/exclude patterns, extracted-file byte counts, and skip reasons
+active include/exclude patterns, extracted-file byte counts, scan budget state,
+and skip reasons
 such as unsupported extensions, include-filter mismatches, max-file limits,
 cumulative byte limits, oversized files,
 depth-pruned directories, default ignored generated paths, user excluded paths,

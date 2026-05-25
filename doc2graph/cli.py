@@ -60,6 +60,14 @@ def main(argv: List[str] | None = None) -> int:
         help="Maximum directory depth to descend when processing a directory; 0 means root files only",
     )
     parser.add_argument(
+        "--max-scan-entries",
+        type=int,
+        help=(
+            "Maximum filesystem entries to inspect during directory scanning; "
+            "set -1 to disable"
+        ),
+    )
+    parser.add_argument(
         "--max-file-bytes",
         type=int,
         default=25 * 1024 * 1024,
@@ -103,12 +111,18 @@ def main(argv: List[str] | None = None) -> int:
         if args.max_total_bytes is None or args.max_total_bytes < 0
         else args.max_total_bytes
     )
+    max_scan_entries = (
+        None
+        if args.max_scan_entries is None or args.max_scan_entries < 0
+        else args.max_scan_entries
+    )
     graph = build_corpus_graph(
         args.path,
         args.graph,
         recursive=not args.no_recursive,
         max_files=args.max_files,
         max_depth=args.max_depth,
+        max_scan_entries=max_scan_entries,
         max_file_bytes=max_file_bytes,
         max_total_bytes=max_total_bytes,
         include=args.include,

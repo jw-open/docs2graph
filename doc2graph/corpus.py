@@ -62,6 +62,7 @@ def build_corpus_graph(
     recursive: bool = True,
     max_files: int | None = None,
     max_depth: int | None = None,
+    max_scan_entries: int | None = None,
     max_file_bytes: int | None = 25 * 1024 * 1024,
     max_total_bytes: int | None = None,
     include: Sequence[str] | None = None,
@@ -96,6 +97,7 @@ def build_corpus_graph(
         exclude=exclude,
         max_files=max_files,
         max_depth=max_depth,
+        max_scan_entries=max_scan_entries,
         skip_report_limit=skip_report_limit,
         reserved_paths=reserved_paths,
     )
@@ -126,6 +128,10 @@ def build_corpus_graph(
         "max_files_reached": scan.skipped_by_reason.get("max_files_exceeded", 0) > 0,
         "max_depth": max_depth,
         "max_depth_reached": scan.skipped_by_reason.get("max_depth_exceeded", 0) > 0,
+        "max_scan_entries": max_scan_entries,
+        "max_scan_entries_reached": scan.scan_truncated,
+        "scanned_entry_count": scan.scanned_entry_count,
+        "skipped_file_count_is_complete": not scan.scan_truncated,
         "max_file_bytes": max_file_bytes,
         "max_total_bytes": max_total_bytes,
         "max_total_bytes_reached": False,
@@ -150,6 +156,7 @@ def build_corpus_graph(
                 "source": str(root),
                 "file_count": len(files),
                 "skipped_file_count": scan.skipped_count,
+                "skipped_file_count_is_complete": not scan.scan_truncated,
                 "recursive": recursive,
                 "extraction_method": "static",
             },
@@ -321,8 +328,11 @@ def build_corpus_graph(
         scan.skipped_by_reason[reason] = scan.skipped_by_reason.get(reason, 0) + count
         scan.skipped_count += count
     manifest_attrs["skipped_file_count"] = scan.skipped_count
+    manifest_attrs["skipped_file_count_is_complete"] = not scan.scan_truncated
     manifest_attrs["skipped_by_reason"] = dict(sorted(scan.skipped_by_reason.items()))
     manifest_attrs["reported_skipped_file_count"] = len(scan.skipped_samples) + runtime_reported_skips
+    manifest_attrs["max_scan_entries_reached"] = scan.scan_truncated
+    manifest_attrs["scanned_entry_count"] = scan.scanned_entry_count
     manifest_attrs["max_total_bytes_reached"] = (
         scan.skipped_by_reason.get("max_total_bytes_exceeded", 0) > 0
     )
@@ -332,6 +342,7 @@ def build_corpus_graph(
     manifest_attrs["cache_misses"] = cache_stats["misses"]
     manifest_attrs["cache_writes"] = cache_stats["writes"]
     nodes[0]["attributes"]["skipped_file_count"] = scan.skipped_count
+    nodes[0]["attributes"]["skipped_file_count_is_complete"] = not scan.scan_truncated
     nodes[0]["attributes"]["extracted_file_count"] = extracted_file_count
     nodes[0]["attributes"]["extracted_total_bytes"] = extracted_total_bytes
     if cache_path is not None:
@@ -355,6 +366,8 @@ class CorpusScan:
     skipped_by_reason: Dict[str, int] = field(default_factory=dict)
     skipped_count: int = 0
     skipped_samples: List[SkippedFile] = field(default_factory=list)
+    scanned_entry_count: int = 0
+    scan_truncated: bool = False
 
 
 def scan_document_files(
@@ -365,6 +378,7 @@ def scan_document_files(
     exclude: Sequence[str] | None = None,
     max_files: int | None = None,
     max_depth: int | None = None,
+    max_scan_entries: int | None = None,
     skip_report_limit: int = 100,
     reserved_paths: Sequence[Path] | None = None,
 ) -> CorpusScan:
@@ -382,6 +396,7 @@ def scan_document_files(
         default_excludes=default_excludes,
         user_excludes=user_excludes,
         max_depth=max_depth,
+        max_scan_entries=max_scan_entries,
         scan=result,
         report_limit=report_limit,
     ):
@@ -411,6 +426,7 @@ def iter_document_files(
     exclude: Sequence[str] | None = None,
     max_files: int | None = None,
     max_depth: int | None = None,
+    max_scan_entries: int | None = None,
 ) -> Iterable[Path]:
     """Yield supported document files under ``root`` in deterministic order."""
     scan = scan_document_files(
@@ -420,6 +436,7 @@ def iter_document_files(
         exclude=exclude,
         max_files=max_files,
         max_depth=max_depth,
+        max_scan_entries=max_scan_entries,
         skip_report_limit=0,
     )
     yield from scan.files
@@ -432,6 +449,7 @@ def _iter_candidate_files(
     default_excludes: Sequence[str],
     user_excludes: Sequence[str],
     max_depth: int | None = None,
+    max_scan_entries: int | None = None,
     scan: CorpusScan | None = None,
     report_limit: int = 0,
 ) -> Iterable[Path]:
@@ -444,7 +462,17 @@ def _iter_candidate_files(
         return
 
     for path in entries:
+        if scan is not None and scan.scan_truncated:
+            return
         rel = path.relative_to(root).as_posix()
+        if scan is not None and not _consume_scan_entry(
+            scan,
+            path,
+            rel,
+            max_scan_entries,
+            report_limit,
+        ):
+            return
         ignore_reason = _ignore_reason(path, rel, default_excludes, user_excludes)
         if ignore_reason is not None:
             if scan is not None:
@@ -481,9 +509,12 @@ def _iter_candidate_files(
                     default_excludes,
                     user_excludes,
                     max_depth=max_depth,
+                    max_scan_entries=max_scan_entries,
                     scan=scan,
                     report_limit=report_limit,
                 )
+                if scan is not None and scan.scan_truncated:
+                    return
             continue
         if path_kind == "file":
             yield path
@@ -500,6 +531,7 @@ def _iter_candidate_files_for_child(
     user_excludes: Sequence[str],
     *,
     max_depth: int | None = None,
+    max_scan_entries: int | None = None,
     scan: CorpusScan | None = None,
     report_limit: int = 0,
 ) -> Iterable[Path]:
@@ -512,7 +544,17 @@ def _iter_candidate_files_for_child(
         return
 
     for path in entries:
+        if scan is not None and scan.scan_truncated:
+            return
         rel = path.relative_to(root).as_posix()
+        if scan is not None and not _consume_scan_entry(
+            scan,
+            path,
+            rel,
+            max_scan_entries,
+            report_limit,
+        ):
+            return
         ignore_reason = _ignore_reason(path, rel, default_excludes, user_excludes)
         if ignore_reason is not None:
             if scan is not None:
@@ -548,9 +590,12 @@ def _iter_candidate_files_for_child(
                 default_excludes,
                 user_excludes,
                 max_depth=max_depth,
+                max_scan_entries=max_scan_entries,
                 scan=scan,
                 report_limit=report_limit,
             )
+            if scan is not None and scan.scan_truncated:
+                return
         elif path_kind == "file":
             yield path
         elif path_kind == "inaccessible" and scan is not None:
@@ -646,6 +691,32 @@ def _safe_size(path: Path) -> int | None:
         return path.stat().st_size
     except OSError:
         return None
+
+
+def _consume_scan_entry(
+    scan: CorpusScan,
+    path: Path,
+    rel: str,
+    max_scan_entries: int | None,
+    report_limit: int,
+) -> bool:
+    """Advance the deterministic scan budget for one filesystem entry."""
+    if max_scan_entries is None:
+        scan.scanned_entry_count += 1
+        return True
+    if scan.scanned_entry_count >= max_scan_entries:
+        scan.scan_truncated = True
+        _record_skipped(
+            scan,
+            path,
+            rel,
+            "max_scan_entries_exceeded",
+            report_limit,
+            path_type=_skip_path_type(path),
+        )
+        return False
+    scan.scanned_entry_count += 1
+    return True
 
 
 def _resolved_path(path: str | Path) -> Path:

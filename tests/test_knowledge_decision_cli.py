@@ -427,6 +427,68 @@ def test_directory_corpus_limits_recursion_depth(tmp_path):
     assert skipped[0]["attributes"]["relative_path"] == "shallow/deep"
 
 
+def test_directory_corpus_can_truncate_large_scans(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+    (docs / "c.md").write_text("# C\n\nGamma document.", encoding="utf-8")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_scan_entries=2,
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "max_scan_entries_exceeded"
+    ]
+
+    assert file_paths == ["a.md", "b.md"]
+    assert manifest["attributes"]["max_scan_entries"] == 2
+    assert manifest["attributes"]["max_scan_entries_reached"] is True
+    assert manifest["attributes"]["scanned_entry_count"] == 2
+    assert manifest["attributes"]["skipped_file_count_is_complete"] is False
+    assert manifest["attributes"]["skipped_by_reason"] == {"max_scan_entries_exceeded": 1}
+    assert skipped[0]["attributes"]["relative_path"] == "c.md"
+
+
+def test_cli_accepts_max_scan_entries(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    output = tmp_path / "graph.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    exit_code = main(
+        [
+            str(docs),
+            "--graph",
+            "knowledge",
+            "--max-scan-entries",
+            "1",
+            "--output",
+            str(output),
+        ]
+    )
+
+    graph = json.loads(output.read_text(encoding="utf-8"))
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+
+    assert exit_code == 0
+    assert manifest["attributes"]["max_scan_entries"] == 1
+    assert manifest["attributes"]["max_scan_entries_reached"] is True
+
+
 def test_document_graph_from_directory_accepts_corpus_options(tmp_path):
     docs = tmp_path / "docs"
     deep = docs / "deep"
