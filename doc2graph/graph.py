@@ -88,8 +88,8 @@ class DocumentGraph:
         Build a DocumentGraph from a documentation file.
 
         ``graph_type`` can be ``"knowledge"``, ``"decision"``, ``"schema"``,
-        or ``"all"``. This is the document-native path for papers, manuals,
-        ADRs, RFCs, and design docs.
+        ``"media"``, or ``"all"``. This is the document-native path for
+        papers, manuals, ADRs, RFCs, design docs, and visual sources.
         """
         from .cli import build_graph
 

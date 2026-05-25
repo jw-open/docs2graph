@@ -32,7 +32,7 @@ Entity extraction ──► Relationship extraction
           Your LLM prompt
 ```
 
-1. Feed it a document — PDF, Markdown, plain text, HTML, code file
+1. Feed it a document — PDF, Google Doc export URL, Markdown, plain text, HTML, image/chart, code file
 2. It extracts entities (people, concepts, terms, sections) as nodes
 3. It extracts relationships (references, defines, depends-on, authored-by) as edges
 4. You query the graph and get back only the relevant subgraph
@@ -44,13 +44,26 @@ Entity extraction ──► Relationship extraction
 doc2graph paper.md --graph knowledge --output paper.graph.json
 doc2graph architecture.md --graph decision --output decisions.graph.json
 doc2graph schema.md --graph schema --output schema.graph.json
+doc2graph chart.png --graph media --output chart.graph.json
 doc2graph docs.md --graph all --output docs.graph.json
 ```
 
 - `knowledge`: document, section, concept, claim, evidence, citation, and URL nodes.
 - `decision`: problem, context, option, pros, cons, tradeoff, decision, and consequence nodes.
 - `schema`: table/entity graphs from schema docs and data dictionaries.
+- `media`: image/chart metadata, OCR text, and chart signal nodes.
 - `all`: merged graph from the supported document extractors.
+
+### Supported sources
+
+- Local text-like files: `.md`, `.mdx`, `.txt`, `.html`, `.csv`, `.tsv`
+- Office-style files with extras: `.docx`, `.pptx`
+- PDF: native embedded text via `pypdf`, with OCR fallback for scanned PDFs
+- Images/charts: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.tif`, `.tiff`, `.bmp` via OCR and media metadata
+- URLs: generic text/HTML URLs and public/exportable Google Docs, Sheets, and Slides URLs
+
+Private Google Workspace documents require either public export access or
+`GOOGLE_DOCS_BEARER_TOKEN` with permission to read the document.
 
 Outputs are plain JSON:
 

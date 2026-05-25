@@ -15,6 +15,11 @@ def load_document(path: str) -> str:
     DOCX/PPTX work when their extras are installed; unsupported extensions
     fall back to text loading.
     """
+    from .url import is_url, load_url
+
+    if is_url(path):
+        return load_url(path)
+
     p = Path(path)
     suffix = p.suffix.lower()
 
@@ -38,7 +43,11 @@ def load_document(path: str) -> str:
         from .csv import load_csv
 
         return load_csv(path)
-    if suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".pdf"}:
+    if suffix == ".pdf":
+        from .pdf import load_pdf
+
+        return load_pdf(path)
+    if suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".webp"}:
         from .ocr import load_ocr
 
         return load_ocr(path)

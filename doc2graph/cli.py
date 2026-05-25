@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from .extractors.decision import extract_decision_graph
 from .extractors.knowledge import extract_knowledge_graph
+from .extractors.media import extract_media_graph, is_media_path
 from .extractors.schema import extract_schema_graph
 from .loaders.auto import load_document
 
@@ -21,12 +22,17 @@ def build_graph(path: str, graph_type: str = "knowledge") -> Dict[str, Any]:
         return extract_decision_graph(text, source=path)
     if graph_type == "schema":
         return extract_schema_graph(text, source=path)
+    if graph_type == "media":
+        return extract_media_graph(path, text=text)
     if graph_type == "all":
-        return _merge_graphs([
+        graphs = [
             extract_knowledge_graph(text, source=path),
             extract_decision_graph(text, source=path),
             extract_schema_graph(text, source=path),
-        ])
+        ]
+        if is_media_path(path):
+            graphs.append(extract_media_graph(path, text=text))
+        return _merge_graphs(graphs)
     raise ValueError(f"Unsupported graph type: {graph_type}")
 
 
@@ -35,7 +41,7 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("path", help="Document path")
     parser.add_argument(
         "--graph",
-        choices=["knowledge", "decision", "schema", "all"],
+        choices=["knowledge", "decision", "schema", "media", "all"],
         default="knowledge",
         help="Graph type to extract",
     )
