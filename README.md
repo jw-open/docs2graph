@@ -115,10 +115,11 @@ Large corpora are handled by deterministic limits:
   very large trees; the manifest marks `max_scan_entries_reached` and
   `skipped_file_count_is_complete: false` because unvisited paths are not fully
   counted.
-- `--include` / `--exclude`: repeatable glob filters for folder subsets.
-  Supported files outside an include filter are counted as
-  `include_filter_mismatch` skips, with bounded sample nodes. Paths matched by
-  user exclude filters are counted as `exclude_filter_match` skips.
+- `--include` / `--exclude`: repeatable glob filters or folder/file names for
+  corpus subsets. For example, `--include adr` and `--include "adr/**"` both
+  select files under `adr/`. Supported files outside an include filter are
+  counted as `include_filter_mismatch` skips, with bounded sample nodes. Paths
+  matched by user exclude filters are counted as `exclude_filter_match` skips.
 - `--skip-report-limit N`: cap the total number of omitted files listed as
   `skipped_file` or extraction-error nodes while still preserving aggregate
   skip counts and a deterministic SHA-256 digest of skipped path records. The

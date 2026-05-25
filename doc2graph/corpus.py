@@ -676,7 +676,7 @@ def scan_document_files(
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
             _record_skipped(result, path, rel, "unsupported_extension", report_limit)
             continue
-        if patterns and not any(fnmatch.fnmatch(rel, pattern) for pattern in patterns):
+        if patterns and not _matches_include_patterns(path, rel, patterns):
             _record_skipped(result, path, rel, "include_filter_mismatch", report_limit)
             continue
         if max_files is not None and len(result.files) >= max_files:
@@ -1063,6 +1063,15 @@ def _ignore_reason(
 
 
 def _matches_ignore_patterns(path: Path, rel: str, patterns: Sequence[str]) -> bool:
+    rel_parts = set(rel.split("/"))
+    for pattern in patterns:
+        if pattern in rel_parts or fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(path.name, pattern):
+            return True
+    return False
+
+
+def _matches_include_patterns(path: Path, rel: str, patterns: Sequence[str]) -> bool:
+    """Return whether a selected file matches user include globs or path parts."""
     rel_parts = set(rel.split("/"))
     for pattern in patterns:
         if pattern in rel_parts or fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(path.name, pattern):
