@@ -391,3 +391,57 @@ def test_directory_corpus_can_reuse_explicit_cache(tmp_path):
     assert refreshed_manifest["attributes"]["cache_hits"] == 0
     assert refreshed_manifest["attributes"]["cache_misses"] == 2
     assert refreshed_manifest["attributes"]["cache_writes"] == 2
+
+
+def test_directory_corpus_prunes_stale_cache_entries(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    stale = docs / "b.md"
+    stale.write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    stale.unlink()
+    second = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    manifest = next(n for n in second["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    cached_paths = {
+        entry["metadata"]["relative_path"]
+        for entry in payload["entries"].values()
+        if entry.get("metadata", {}).get("root") == str(docs.resolve())
+    }
+
+    assert manifest["attributes"]["cache_hits"] == 1
+    assert manifest["attributes"]["cache_pruned"] == 1
+    assert cached_paths == {"a.md"}
+
+
+def test_directory_corpus_prunes_cache_entries_outside_current_include(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    filtered = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        include=["a.md"],
+        cache_path=cache,
+    )
+
+    manifest = next(n for n in filtered["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    cached_paths = {
+        entry["metadata"]["relative_path"]
+        for entry in payload["entries"].values()
+        if entry.get("metadata", {}).get("root") == str(docs.resolve())
+    }
+
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["cache_hits"] == 1
+    assert manifest["attributes"]["cache_pruned"] == 1
+    assert cached_paths == {"a.md"}

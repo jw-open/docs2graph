@@ -97,6 +97,7 @@ def build_corpus_graph(
         "hits": 0,
         "misses": 0,
         "writes": 0,
+        "pruned": 0,
         "refresh": refresh_cache,
     }
 
@@ -123,6 +124,7 @@ def build_corpus_graph(
         "cache_hits": cache_stats["hits"],
         "cache_misses": cache_stats["misses"],
         "cache_writes": cache_stats["writes"],
+        "cache_pruned": cache_stats["pruned"],
         "cache_refresh": cache_stats["refresh"],
     }
     nodes: List[Dict[str, Any]] = [
@@ -169,6 +171,7 @@ def build_corpus_graph(
     extracted_total_bytes = 0
     total_report_limit = max(0, skip_report_limit)
     budget_exhausted = False
+    active_cache_keys: set[str] = set()
 
     for file_path in files:
         rel = file_path.relative_to(root).as_posix()
@@ -268,6 +271,7 @@ def build_corpus_graph(
                         "graph": graph,
                     }
                     cache_stats["writes"] += 1
+            active_cache_keys.add(cache_key)
         except Exception as exc:  # keep batch extraction useful on mixed corpora
             _count_skip(runtime_skipped_by_reason, "load_error")
             if len(scan.skipped_samples) + runtime_reported_skips < total_report_limit:
@@ -317,6 +321,8 @@ def build_corpus_graph(
     nodes[0]["attributes"]["extracted_file_count"] = extracted_file_count
     nodes[0]["attributes"]["extracted_total_bytes"] = extracted_total_bytes
     if cache_path is not None:
+        cache_stats["pruned"] = _prune_cache(cache, root, graph_type, active_cache_keys)
+        manifest_attrs["cache_pruned"] = cache_stats["pruned"]
         _write_cache(cache_path, cache)
     return _merge_graphs([corpus_graph, *graph_parts])
 
@@ -591,6 +597,34 @@ def _write_cache(cache_path: str | Path, cache: Dict[str, Any]) -> None:
         encoding="utf-8",
     )
     temp.replace(path)
+
+
+def _prune_cache(
+    cache: Dict[str, Any],
+    root: Path,
+    graph_type: str,
+    active_keys: set[str],
+) -> int:
+    """Remove stale cache entries for this corpus root and graph type."""
+    entries = cache.get("entries")
+    if not isinstance(entries, dict):
+        cache["entries"] = {}
+        return 0
+
+    root_value = str(root.resolve())
+    stale_keys = []
+    for key, entry in entries.items():
+        if key in active_keys or not isinstance(entry, dict):
+            continue
+        metadata = entry.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        if metadata.get("root") == root_value and metadata.get("graph_type") == graph_type:
+            stale_keys.append(key)
+
+    for key in stale_keys:
+        del entries[key]
+    return len(stale_keys)
 
 
 def _add_runtime_skip(
