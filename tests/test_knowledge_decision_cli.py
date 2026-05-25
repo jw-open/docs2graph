@@ -536,3 +536,39 @@ def test_directory_corpus_prunes_cache_entries_outside_current_include(tmp_path)
     assert manifest["attributes"]["cache_hits"] == 1
     assert manifest["attributes"]["cache_pruned"] == 1
     assert cached_paths == {"a.md"}
+
+
+def test_directory_corpus_does_not_extract_cache_file_inside_corpus(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = docs / ".doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+
+    build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+    second = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
+
+    manifest = next(n for n in second["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in second["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = [
+        n
+        for n in second["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "reserved_output_file"
+    ]
+    payload = json.loads(cache.read_text(encoding="utf-8"))
+    cached_paths = {
+        entry["metadata"]["relative_path"]
+        for entry in payload["entries"].values()
+        if entry.get("metadata", {}).get("root") == str(docs.resolve())
+    }
+
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["skipped_by_reason"] == {"reserved_output_file": 1}
+    assert manifest["attributes"]["cache_hits"] == 1
+    assert file_paths == ["a.md"]
+    assert skipped[0]["attributes"]["relative_path"] == ".doc2graph-cache.json"
+    assert cached_paths == {"a.md"}

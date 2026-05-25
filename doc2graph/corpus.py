@@ -83,6 +83,7 @@ def build_corpus_graph(
     if not root.is_dir():
         raise FileNotFoundError(path)
 
+    reserved_paths = [_resolved_path(cache_path)] if cache_path is not None else None
     scan = scan_document_files(
         root,
         recursive=recursive,
@@ -91,6 +92,7 @@ def build_corpus_graph(
         max_files=max_files,
         max_depth=max_depth,
         skip_report_limit=skip_report_limit,
+        reserved_paths=reserved_paths,
     )
     files = scan.files
     cache = _load_cache(cache_path) if cache_path is not None else _empty_cache()
@@ -359,10 +361,12 @@ def scan_document_files(
     max_files: int | None = None,
     max_depth: int | None = None,
     skip_report_limit: int = 100,
+    reserved_paths: Sequence[Path] | None = None,
 ) -> CorpusScan:
     """Scan ``root`` for supported documents and bounded skipped-file metadata."""
     patterns = tuple(include or ())
     excludes = tuple(DEFAULT_IGNORE_PATTERNS) + tuple(exclude or ())
+    reserved = frozenset(_resolved_path(path) for path in reserved_paths or ())
     result = CorpusScan()
     report_limit = max(0, skip_report_limit)
 
@@ -375,6 +379,9 @@ def scan_document_files(
         report_limit=report_limit,
     ):
         rel = path.relative_to(root).as_posix()
+        if _resolved_path(path) in reserved:
+            _record_skipped(result, path, rel, "reserved_output_file", report_limit)
+            continue
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
             _record_skipped(result, path, rel, "unsupported_extension", report_limit)
             continue
@@ -586,6 +593,10 @@ def _safe_size(path: Path) -> int | None:
         return path.stat().st_size
     except OSError:
         return None
+
+
+def _resolved_path(path: str | Path) -> Path:
+    return Path(path).expanduser().resolve(strict=False)
 
 
 def _relative_depth(root: Path, path: Path) -> int:

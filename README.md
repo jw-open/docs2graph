@@ -101,7 +101,9 @@ Large corpora are handled by deterministic limits:
   `skipped_file` or extraction-error nodes while still preserving aggregate
   skip counts.
 - `--cache PATH`: opt into a JSON cache that reuses unchanged per-file graph
-  extraction across repeated corpus runs.
+  extraction across repeated corpus runs. If the cache file is inside the
+  scanned corpus directory, doc2graph reserves it as an output artifact and
+  does not extract it as a source document.
 - `--refresh-cache`: rebuild cached entries while writing an updated cache.
 
 Every directory graph includes a `corpus_manifest` node with selected-file
@@ -111,7 +113,7 @@ active include/exclude patterns, extracted-file byte counts, and skip reasons
 such as unsupported extensions, include-filter mismatches, max-file limits,
 cumulative byte limits, oversized files,
 depth-pruned directories, symlinked directories, inaccessible paths, and
-per-file extraction errors. This
+reserved cache/output files, and per-file extraction errors. This
 keeps large mixed-folder runs deterministic and auditable without requiring all
 omitted paths to be materialized as graph nodes.
 
