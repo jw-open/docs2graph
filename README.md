@@ -168,7 +168,8 @@ their `concept` with `defines` and `defined_by` edges, while preserving section
 and citation provenance.
 
 Every directory graph includes a `corpus_manifest` node with selected-file
-counts, a deterministic selected-path ordering contract and SHA-256 digest,
+counts, total selected bytes, a deterministic selected-path ordering contract,
+and SHA-256 digests for selected paths and selected file records,
 skipped-file counts, a deterministic skipped-record digest, cache hit/miss/write counts when caching is
 enabled, the content-digest and extraction fingerprint validation used for
 cache entries,

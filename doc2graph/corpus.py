@@ -197,6 +197,7 @@ def build_corpus_graph(
         reserved_paths=reserved_paths,
     )
     files = scan.files
+    selected_file_sizes: Dict[Path, int | None] = {}
     cache_load = (
         _load_cache_with_status(cache_path)
         if cache_path is not None
@@ -230,6 +231,10 @@ def build_corpus_graph(
         "selected_file_paths_sha256": _paths_sha256(
             file_path.relative_to(root).as_posix() for file_path in files
         ),
+        "selected_file_records_sha256": None,
+        "selected_file_records_sha256_is_complete": not scan.scan_truncated,
+        "selected_total_bytes": 0,
+        "selected_total_bytes_is_complete": True,
         "skipped_file_count": scan.skipped_count,
         "skipped_by_reason": dict(sorted(scan.skipped_by_reason.items())),
         "skipped_file_records_sha256": scan.skipped_records_digest.hexdigest(),
@@ -341,6 +346,7 @@ def build_corpus_graph(
         parent_id = _ensure_folder_nodes(root, file_path.parent, root_id, nodes, edges, seen_folders)
         file_id = _id("file", rel)
         size = _safe_size(file_path)
+        selected_file_sizes[file_path] = size
         attrs = {
             "type": "file",
             "source": str(file_path),
@@ -524,6 +530,18 @@ def build_corpus_graph(
     manifest_attrs["skipped_by_reason"] = dict(sorted(scan.skipped_by_reason.items()))
     manifest_attrs["skipped_file_records_sha256"] = scan.skipped_records_digest.hexdigest()
     manifest_attrs["skipped_file_records_sha256_is_complete"] = not scan.scan_truncated
+    manifest_attrs["selected_file_records_sha256"] = _selected_file_records_sha256(
+        root,
+        files,
+        selected_file_sizes,
+    )
+    manifest_attrs["selected_file_records_sha256_is_complete"] = not scan.scan_truncated
+    manifest_attrs["selected_total_bytes"] = sum(
+        size for size in selected_file_sizes.values() if size is not None
+    )
+    manifest_attrs["selected_total_bytes_is_complete"] = all(
+        size is not None for size in selected_file_sizes.values()
+    )
     manifest_attrs["reported_skipped_file_count"] = len(scan.skipped_samples) + runtime_reported_skips
     manifest_attrs["unreported_skipped_file_count"] = max(
         0,
@@ -1168,6 +1186,21 @@ def _paths_sha256(paths: Iterable[str]) -> str:
     for path in paths:
         digest.update(path.encode("utf-8", errors="surrogateescape"))
         digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _selected_file_records_sha256(
+    root: Path,
+    files: Sequence[Path],
+    sizes: Dict[Path, int | None],
+) -> str:
+    digest = hashlib.sha256()
+    for path in files:
+        rel = path.relative_to(root).as_posix()
+        size = sizes.get(path)
+        for value in (rel, path.suffix.lower(), "" if size is None else str(size)):
+            digest.update(value.encode("utf-8", errors="surrogateescape"))
+            digest.update(b"\0")
     return digest.hexdigest()
 
 

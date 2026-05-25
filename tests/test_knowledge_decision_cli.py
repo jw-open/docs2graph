@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import time
 
 import pytest
 
@@ -534,6 +535,7 @@ def test_directory_corpus_can_stop_scanning_after_max_files(tmp_path):
     assert manifest["attributes"]["max_scan_entries_reached"] is False
     assert manifest["attributes"]["skipped_file_count_is_complete"] is False
     assert manifest["attributes"]["skipped_file_records_sha256_is_complete"] is False
+    assert manifest["attributes"]["selected_file_records_sha256_is_complete"] is False
     assert manifest["attributes"]["skipped_by_reason"] == {"max_files_exceeded": 1}
     assert skipped[0]["attributes"]["relative_path"] == "b.md"
 
@@ -557,14 +559,26 @@ def test_directory_corpus_records_deterministic_selected_path_digest_and_order(t
     ]
     selected_paths = [attrs["relative_path"] for attrs in file_attrs]
     digest = hashlib.sha256()
+    record_digest = hashlib.sha256()
+    selected_total_bytes = 0
     for path in selected_paths:
         digest.update(path.encode("utf-8", errors="surrogateescape"))
         digest.update(b"\0")
+        file_path = docs / path
+        size = file_path.stat().st_size
+        selected_total_bytes += size
+        for value in (path, file_path.suffix.lower(), str(size)):
+            record_digest.update(value.encode("utf-8", errors="surrogateescape"))
+            record_digest.update(b"\0")
 
     assert selected_paths == ["alpha/z.md", "beta/a.md", "root.md"]
     assert [attrs["extraction_order"] for attrs in file_attrs] == [0, 1, 2]
     assert manifest["attributes"]["selected_file_ordering"] == "relative_path_depth_first"
     assert manifest["attributes"]["selected_file_paths_sha256"] == digest.hexdigest()
+    assert manifest["attributes"]["selected_file_records_sha256"] == record_digest.hexdigest()
+    assert manifest["attributes"]["selected_file_records_sha256_is_complete"] is True
+    assert manifest["attributes"]["selected_total_bytes"] == selected_total_bytes
+    assert manifest["attributes"]["selected_total_bytes_is_complete"] is True
 
 
 def test_directory_corpus_reports_supported_files_outside_include(tmp_path):
@@ -1331,6 +1345,7 @@ def test_directory_corpus_cache_uses_content_digest_not_only_stat_metadata(tmp_p
 
     first = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
     original_stat = source.stat()
+    time.sleep(0.05)
     source.write_text(updated, encoding="utf-8")
     os.utime(source, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
     second = build_corpus_graph(str(docs), graph_type="knowledge", cache_path=cache)
