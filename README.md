@@ -70,8 +70,10 @@ Private Google Workspace documents require either public export access or
 
 Directory input is first-class. doc2graph walks supported document formats,
 skips common generated folders such as `.git`, `node_modules`, `dist`, and
-`build`, and emits a corpus root plus folder/file nodes linked to each extracted
-document graph:
+`build`, along with doc2graph run/cache artifacts and Python package metadata
+such as `.doc2graph-runs`, `.doc2graph-cache.json`, `DOC2GRAPH_PROGRESS.md`,
+`DOC2GRAPH_NEXT_PROMPT.md`, and `*.egg-info`. It emits a corpus root plus
+folder/file nodes linked to each extracted document graph:
 
 ```bash
 doc2graph ./knowledge-base --graph all --output corpus.graph.json

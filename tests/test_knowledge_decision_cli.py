@@ -567,6 +567,46 @@ def test_directory_scan_prunes_default_ignored_directories(tmp_path):
     assert file_paths == {"visible.md"}
 
 
+def test_directory_scan_prunes_doc2graph_and_packaging_artifacts(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "visible.md").write_text("# Visible\n", encoding="utf-8")
+    (docs / "DOC2GRAPH_PROGRESS.md").write_text("# Generated progress\n", encoding="utf-8")
+    (docs / "DOC2GRAPH_NEXT_PROMPT.md").write_text("# Generated prompt\n", encoding="utf-8")
+    (docs / ".doc2graph-cache.json").write_text("{}", encoding="utf-8")
+    runs = docs / ".doc2graph-runs"
+    runs.mkdir()
+    (runs / "doc2graph.all.json").write_text("{}", encoding="utf-8")
+    egg_info = docs / "doc2graph.egg-info"
+    egg_info.mkdir()
+    (egg_info / "SOURCES.txt").write_text("doc2graph/corpus.py\n", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", skip_report_limit=10)
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped_paths = {
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "default_ignore_match"
+    }
+
+    assert file_paths == ["visible.md"]
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["skipped_by_reason"] == {"default_ignore_match": 5}
+    assert skipped_paths == {
+        ".doc2graph-cache.json",
+        ".doc2graph-runs",
+        "DOC2GRAPH_NEXT_PROMPT.md",
+        "DOC2GRAPH_PROGRESS.md",
+        "doc2graph.egg-info",
+    }
+
+
 def test_directory_corpus_reports_default_ignored_directories(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()

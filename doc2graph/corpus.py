@@ -40,6 +40,10 @@ DEFAULT_IGNORE_PATTERNS = (
     ".git",
     ".hg",
     ".svn",
+    ".doc2graph-runs",
+    ".doc2graph-cache.json",
+    "DOC2GRAPH_PROGRESS.md",
+    "DOC2GRAPH_NEXT_PROMPT.md",
     "__pycache__",
     ".pytest_cache",
     ".mypy_cache",
@@ -50,6 +54,7 @@ DEFAULT_IGNORE_PATTERNS = (
     "node_modules",
     "dist",
     "build",
+    "*.egg-info",
     ".next",
     ".nuxt",
     "coverage",
@@ -432,6 +437,7 @@ def scan_document_files(
         recursive=recursive,
         default_excludes=default_excludes,
         user_excludes=user_excludes,
+        reserved_paths=reserved,
         max_depth=max_depth,
         max_scan_entries=max_scan_entries,
         scan=result,
@@ -485,6 +491,7 @@ def _iter_candidate_files(
     recursive: bool,
     default_excludes: Sequence[str],
     user_excludes: Sequence[str],
+    reserved_paths: frozenset[Path] | None = None,
     max_depth: int | None = None,
     max_scan_entries: int | None = None,
     scan: CorpusScan | None = None,
@@ -510,6 +517,9 @@ def _iter_candidate_files(
             report_limit,
         ):
             return
+        if reserved_paths is not None and _resolved_path(path) in reserved_paths:
+            yield path
+            continue
         ignore_reason = _ignore_reason(path, rel, default_excludes, user_excludes)
         if ignore_reason is not None:
             if scan is not None:
@@ -545,6 +555,7 @@ def _iter_candidate_files(
                     path,
                     default_excludes,
                     user_excludes,
+                    reserved_paths,
                     max_depth=max_depth,
                     max_scan_entries=max_scan_entries,
                     scan=scan,
@@ -566,6 +577,7 @@ def _iter_candidate_files_for_child(
     folder: Path,
     default_excludes: Sequence[str],
     user_excludes: Sequence[str],
+    reserved_paths: frozenset[Path] | None = None,
     *,
     max_depth: int | None = None,
     max_scan_entries: int | None = None,
@@ -592,6 +604,9 @@ def _iter_candidate_files_for_child(
             report_limit,
         ):
             return
+        if reserved_paths is not None and _resolved_path(path) in reserved_paths:
+            yield path
+            continue
         ignore_reason = _ignore_reason(path, rel, default_excludes, user_excludes)
         if ignore_reason is not None:
             if scan is not None:
@@ -626,6 +641,7 @@ def _iter_candidate_files_for_child(
                 path,
                 default_excludes,
                 user_excludes,
+                reserved_paths,
                 max_depth=max_depth,
                 max_scan_entries=max_scan_entries,
                 scan=scan,
