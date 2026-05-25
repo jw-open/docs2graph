@@ -936,9 +936,9 @@ def _ignore_reason(
 
 
 def _matches_ignore_patterns(path: Path, rel: str, patterns: Sequence[str]) -> bool:
-    parts = set(path.parts)
+    rel_parts = set(rel.split("/"))
     for pattern in patterns:
-        if pattern in parts or fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(path.name, pattern):
+        if pattern in rel_parts or fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(path.name, pattern):
             return True
     return False
 

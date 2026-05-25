@@ -792,6 +792,24 @@ def test_directory_scan_prunes_default_ignored_directories(tmp_path):
     assert file_paths == {"visible.md"}
 
 
+def test_directory_scan_ignores_only_relative_generated_names(tmp_path):
+    generated_parent = tmp_path / "build"
+    docs = generated_parent / "docs"
+    docs.mkdir(parents=True)
+    (docs / "visible.md").write_text("# Visible\n\nParent path should not matter.", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", skip_report_limit=10)
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+
+    assert file_paths == ["visible.md"]
+    assert manifest["attributes"]["skipped_by_reason"] == {}
+
+
 def test_directory_scan_prunes_doc2graph_and_packaging_artifacts(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
