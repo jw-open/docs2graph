@@ -70,6 +70,12 @@ def main(argv: List[str] | None = None) -> int:
         action="append",
         help="Directory exclude glob or name; may be repeated",
     )
+    parser.add_argument(
+        "--skip-report-limit",
+        type=int,
+        default=100,
+        help="Maximum number of skipped directory files to list as skipped_file nodes",
+    )
     args = parser.parse_args(argv)
 
     max_file_bytes = None if args.max_file_bytes < 0 else args.max_file_bytes
@@ -81,6 +87,7 @@ def main(argv: List[str] | None = None) -> int:
         max_file_bytes=max_file_bytes,
         include=args.include,
         exclude=args.exclude,
+        skip_report_limit=args.skip_report_limit,
     )
     payload = json.dumps(graph, indent=2 if args.pretty else None, sort_keys=args.pretty)
     if args.output:

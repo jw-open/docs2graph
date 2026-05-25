@@ -132,3 +132,77 @@ def test_directory_corpus_skips_large_files(tmp_path):
     node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
 
     assert "skipped_file" in node_types
+
+
+def test_directory_corpus_reports_skipped_files_and_manifest(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+    (docs / "notes.bin").write_bytes(b"\x00\x01")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_files=1,
+        skip_report_limit=10,
+    )
+    nodes = graph["nodes"]
+    manifest = next(n for n in nodes if n.get("attributes", {}).get("type") == "corpus_manifest")
+    skipped = [
+        n
+        for n in nodes
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") in {"max_files_exceeded", "unsupported_extension"}
+    ]
+
+    assert manifest["attributes"]["selected_file_count"] == 1
+    assert manifest["attributes"]["skipped_by_reason"] == {
+        "max_files_exceeded": 1,
+        "unsupported_extension": 1,
+    }
+    assert manifest["attributes"]["max_files_reached"] is True
+    assert {n["attributes"]["reason"] for n in skipped} == {"max_files_exceeded", "unsupported_extension"}
+
+
+def test_directory_corpus_skip_report_limit_bounds_nodes(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    for index in range(3):
+        (docs / f"ignored-{index}.bin").write_bytes(b"\x00")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        skip_report_limit=1,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    reported_skips = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "unsupported_extension"
+    ]
+
+    assert manifest["attributes"]["skipped_by_reason"] == {"unsupported_extension": 3}
+    assert manifest["attributes"]["reported_skipped_file_count"] == 1
+    assert len(reported_skips) == 1
+
+
+def test_directory_scan_prunes_default_ignored_directories(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "visible.md").write_text("# Visible\n", encoding="utf-8")
+    generated = docs / "node_modules" / "pkg"
+    generated.mkdir(parents=True)
+    (generated / "hidden.md").write_text("# Hidden\n", encoding="utf-8")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge")
+    file_paths = {
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    }
+
+    assert file_paths == {"visible.md"}
