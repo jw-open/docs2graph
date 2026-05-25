@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from doc2graph import DocumentGraph, extract_decision_graph, extract_knowledge_graph
 from doc2graph.cli import build_graph, main
 from doc2graph.corpus import build_corpus_graph
@@ -206,6 +208,35 @@ def test_directory_scan_prunes_default_ignored_directories(tmp_path):
     }
 
     assert file_paths == {"visible.md"}
+
+
+def test_directory_corpus_reports_symlinked_directories_without_descending(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "visible.md").write_text("# Visible\n", encoding="utf-8")
+    loop = docs / "loop"
+    try:
+        loop.symlink_to(docs, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+
+    graph = build_corpus_graph(str(docs), graph_type="knowledge", skip_report_limit=10)
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "symlink_directory"
+    ]
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+
+    assert manifest["attributes"]["skipped_by_reason"] == {"symlink_directory": 1}
+    assert skipped[0]["attributes"]["path_type"] == "directory"
+    assert file_paths == ["visible.md"]
 
 
 def test_directory_corpus_can_reuse_explicit_cache(tmp_path):

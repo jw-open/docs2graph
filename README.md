@@ -96,9 +96,9 @@ Large corpora are handled by deterministic limits:
 Every directory graph includes a `corpus_manifest` node with selected-file
 counts, skipped-file counts, cache hit/miss/write counts when caching is
 enabled, and skip reasons such as unsupported extensions, max-file limits,
-oversized files, and per-file extraction errors. This keeps large mixed-folder
-runs deterministic and auditable without requiring all omitted files to be
-materialized as graph nodes.
+oversized files, symlinked directories, inaccessible paths, and per-file
+extraction errors. This keeps large mixed-folder runs deterministic and
+auditable without requiring all omitted paths to be materialized as graph nodes.
 
 Outputs are plain JSON:
 

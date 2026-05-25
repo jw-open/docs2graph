@@ -148,6 +148,7 @@ def build_corpus_graph(
                     "type": "skipped_file",
                     "source": str(skipped.path),
                     "relative_path": skipped.relative_path,
+                    "path_type": skipped.path_type,
                     "suffix": skipped.path.suffix.lower(),
                     "reason": skipped.reason,
                     "extraction_method": "static",
@@ -268,6 +269,7 @@ class SkippedFile:
     path: Path
     relative_path: str
     reason: str
+    path_type: str = "file"
 
 
 @dataclass
@@ -293,7 +295,13 @@ def scan_document_files(
     result = CorpusScan()
     report_limit = max(0, skip_report_limit)
 
-    for path in _iter_candidate_files(root, recursive=recursive, excludes=excludes):
+    for path in _iter_candidate_files(
+        root,
+        recursive=recursive,
+        excludes=excludes,
+        scan=result,
+        report_limit=report_limit,
+    ):
         rel = path.relative_to(root).as_posix()
         if patterns and not any(fnmatch.fnmatch(rel, pattern) for pattern in patterns):
             continue
@@ -333,39 +341,83 @@ def _iter_candidate_files(
     *,
     recursive: bool,
     excludes: Sequence[str],
+    scan: CorpusScan | None = None,
+    report_limit: int = 0,
 ) -> Iterable[Path]:
     """Yield non-ignored files in deterministic order, pruning ignored directories."""
     try:
         entries = sorted(root.iterdir(), key=lambda p: p.name)
     except OSError:
+        if scan is not None:
+            _record_skipped(scan, root, ".", "directory_inaccessible", report_limit, path_type="directory")
         return
 
     for path in entries:
         rel = path.relative_to(root).as_posix()
         if _is_ignored(path, rel, excludes):
             continue
-        if path.is_dir():
-            if recursive:
-                yield from _iter_candidate_files_for_child(root, path, excludes)
+        path_kind = _path_kind(path)
+        if path_kind == "symlink_directory":
+            if recursive and scan is not None:
+                _record_skipped(scan, path, rel, "symlink_directory", report_limit, path_type="directory")
             continue
-        if path.is_file():
+        if path_kind == "directory":
+            if recursive:
+                yield from _iter_candidate_files_for_child(
+                    root,
+                    path,
+                    excludes,
+                    scan=scan,
+                    report_limit=report_limit,
+                )
+            continue
+        if path_kind == "file":
             yield path
+        elif path_kind == "inaccessible" and scan is not None:
+            _record_skipped(scan, path, rel, "path_inaccessible", report_limit)
+        elif path_kind == "broken_symlink" and scan is not None:
+            _record_skipped(scan, path, rel, "broken_symlink", report_limit)
 
 
-def _iter_candidate_files_for_child(root: Path, folder: Path, excludes: Sequence[str]) -> Iterable[Path]:
+def _iter_candidate_files_for_child(
+    root: Path,
+    folder: Path,
+    excludes: Sequence[str],
+    *,
+    scan: CorpusScan | None = None,
+    report_limit: int = 0,
+) -> Iterable[Path]:
     try:
         entries = sorted(folder.iterdir(), key=lambda p: p.name)
     except OSError:
+        if scan is not None:
+            rel = folder.relative_to(root).as_posix()
+            _record_skipped(scan, folder, rel, "directory_inaccessible", report_limit, path_type="directory")
         return
 
     for path in entries:
         rel = path.relative_to(root).as_posix()
         if _is_ignored(path, rel, excludes):
             continue
-        if path.is_dir():
-            yield from _iter_candidate_files_for_child(root, path, excludes)
-        elif path.is_file():
+        path_kind = _path_kind(path)
+        if path_kind == "symlink_directory":
+            if scan is not None:
+                _record_skipped(scan, path, rel, "symlink_directory", report_limit, path_type="directory")
+            continue
+        if path_kind == "directory":
+            yield from _iter_candidate_files_for_child(
+                root,
+                path,
+                excludes,
+                scan=scan,
+                report_limit=report_limit,
+            )
+        elif path_kind == "file":
             yield path
+        elif path_kind == "inaccessible" and scan is not None:
+            _record_skipped(scan, path, rel, "path_inaccessible", report_limit)
+        elif path_kind == "broken_symlink" and scan is not None:
+            _record_skipped(scan, path, rel, "broken_symlink", report_limit)
 
 
 def _ensure_folder_nodes(
@@ -411,6 +463,21 @@ def _is_ignored(path: Path, rel: str, patterns: Sequence[str]) -> bool:
         if pattern in parts or fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(path.name, pattern):
             return True
     return False
+
+
+def _path_kind(path: Path) -> str:
+    try:
+        if path.is_symlink():
+            if path.exists():
+                return "symlink_directory" if path.is_dir() else "file"
+            return "broken_symlink"
+        if path.is_dir():
+            return "directory"
+        if path.is_file():
+            return "file"
+    except OSError:
+        return "inaccessible"
+    return "other"
 
 
 def _safe_size(path: Path) -> int | None:
@@ -469,11 +536,21 @@ def _write_cache(cache_path: str | Path, cache: Dict[str, Any]) -> None:
     temp.replace(path)
 
 
-def _record_skipped(result: CorpusScan, path: Path, rel: str, reason: str, report_limit: int) -> None:
+def _record_skipped(
+    result: CorpusScan,
+    path: Path,
+    rel: str,
+    reason: str,
+    report_limit: int,
+    *,
+    path_type: str = "file",
+) -> None:
     _count_skip(result.skipped_by_reason, reason)
     result.skipped_count += 1
     if len(result.skipped_samples) < report_limit:
-        result.skipped_samples.append(SkippedFile(path=path, relative_path=rel, reason=reason))
+        result.skipped_samples.append(
+            SkippedFile(path=path, relative_path=rel, reason=reason, path_type=path_type)
+        )
 
 
 def _count_skip(counts: Dict[str, int], reason: str) -> None:
