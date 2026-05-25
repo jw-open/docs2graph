@@ -549,6 +549,39 @@ def test_document_graph_from_directory_accepts_corpus_options(tmp_path):
     assert file_paths == ["root.md"]
 
 
+def test_non_recursive_directory_corpus_reports_skipped_subdirectories(tmp_path):
+    docs = tmp_path / "docs"
+    nested = docs / "nested"
+    nested.mkdir(parents=True)
+    (docs / "root.md").write_text("# Root\n\nRoot document.", encoding="utf-8")
+    (nested / "hidden.md").write_text("# Hidden\n\nNested document.", encoding="utf-8")
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        recursive=False,
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_paths = [
+        n["attributes"]["relative_path"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    ]
+    skipped = [
+        n
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "skipped_file"
+        and n.get("attributes", {}).get("reason") == "non_recursive_directory"
+    ]
+
+    assert manifest["attributes"]["recursive"] is False
+    assert manifest["attributes"]["skipped_by_reason"] == {"non_recursive_directory": 1}
+    assert file_paths == ["root.md"]
+    assert skipped[0]["attributes"]["path_type"] == "directory"
+    assert skipped[0]["attributes"]["relative_path"] == "nested"
+
+
 def test_directory_scan_prunes_default_ignored_directories(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()

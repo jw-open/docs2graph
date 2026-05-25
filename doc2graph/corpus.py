@@ -563,6 +563,15 @@ def _iter_candidate_files(
                 )
                 if scan is not None and scan.scan_truncated:
                     return
+            elif scan is not None:
+                _record_skipped(
+                    scan,
+                    path,
+                    rel,
+                    "non_recursive_directory",
+                    report_limit,
+                    path_type="directory",
+                )
             continue
         if path_kind == "file":
             yield path

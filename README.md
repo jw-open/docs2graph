@@ -94,7 +94,8 @@ Large corpora are handled by deterministic limits:
 - `--max-total-bytes N`: stop extracting files after the cumulative extracted
   byte budget is reached and report remaining files as skipped.
 - `--max-total-bytes -1`: disable the cumulative byte guard.
-- `--no-recursive`: only process files directly under the directory.
+- `--no-recursive`: only process files directly under the directory and
+  report skipped subdirectories as `non_recursive_directory`.
 - `--max-depth N`: bound recursive descent by subdirectory depth; `0` keeps
   only files directly under the corpus root and reports pruned directories.
 - `--max-scan-entries N`: stop the deterministic directory walk after
@@ -142,7 +143,7 @@ and skip reasons
 such as unsupported extensions, include-filter mismatches, max-file limits,
 cumulative byte limits, oversized files,
 depth-pruned directories, default ignored generated paths, user excluded paths,
-symlinked directories, inaccessible paths, and
+non-recursive skipped directories, symlinked directories, inaccessible paths, and
 reserved cache/output files, and per-file extraction errors. This
 keeps large mixed-folder runs deterministic and auditable without requiring all
 omitted paths to be materialized as graph nodes.
