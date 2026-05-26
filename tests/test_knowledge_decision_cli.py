@@ -1596,8 +1596,8 @@ def test_directory_scan_prunes_doc2graph_and_packaging_artifacts(tmp_path):
     (docs / ".doc2graph-cache.json").write_text("{}", encoding="utf-8")
     runs = docs / ".doc2graph-runs"
     runs.mkdir()
-    (runs / "doc2graph.all.json").write_text("{}", encoding="utf-8")
-    egg_info = docs / "doc2graph.egg-info"
+    (runs / "docs2graph.all.json").write_text("{}", encoding="utf-8")
+    egg_info = docs / "docs2graph.egg-info"
     egg_info.mkdir()
     (egg_info / "SOURCES.txt").write_text("doc2graph/corpus.py\n", encoding="utf-8")
 
@@ -1623,7 +1623,7 @@ def test_directory_scan_prunes_doc2graph_and_packaging_artifacts(tmp_path):
         ".doc2graph-runs",
         "DOC2GRAPH_NEXT_PROMPT.md",
         "DOC2GRAPH_PROGRESS.md",
-        "doc2graph.egg-info",
+        "docs2graph.egg-info",
     }
 
 

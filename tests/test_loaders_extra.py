@@ -16,8 +16,8 @@ from docs2graph.loaders.csv import load_csv
 from docs2graph.loaders.json import load_json
 from docs2graph.loaders.auto import load_document
 
-_DOCX_MOD = "doc2graph.loaders.docx"
-_PPTX_MOD = "doc2graph.loaders.pptx"
+_DOCX_MOD = "docs2graph.loaders.docx"
+_PPTX_MOD = "docs2graph.loaders.pptx"
 
 
 # ---------------------------------------------------------------------------
