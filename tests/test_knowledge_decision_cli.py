@@ -1221,6 +1221,77 @@ def test_directory_corpus_can_truncate_large_scans(tmp_path):
     assert skipped[0]["attributes"]["relative_path"] == "c.md"
 
 
+def test_directory_corpus_scan_only_reports_selection_without_extracting_or_caching(tmp_path, monkeypatch):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    cache = tmp_path / "doc2graph-cache.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    from doc2graph import cli
+
+    def fail_if_extracted(path, graph_type="knowledge"):
+        raise AssertionError(f"unexpected extraction for {path}")
+
+    monkeypatch.setattr(cli, "build_file_graph", fail_if_extracted)
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        cache_path=cache,
+        scan_only=True,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_statuses = {
+        n["attributes"]["relative_path"]: n["attributes"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    }
+    node_types = {n.get("attributes", {}).get("type") for n in graph["nodes"]}
+
+    assert manifest["attributes"]["scan_only"] is True
+    assert manifest["attributes"]["selected_file_count"] == 2
+    assert manifest["attributes"]["scan_only_selected_file_count"] == 2
+    assert manifest["attributes"]["extracted_file_count"] == 0
+    assert manifest["attributes"]["failed_file_count"] == 0
+    assert manifest["attributes"]["cache_enabled"] is False
+    assert manifest["attributes"]["cache_write_status"] == "skipped_scan_only"
+    assert cache.exists() is False
+    assert file_statuses["a.md"]["status"] == "selected"
+    assert file_statuses["b.md"]["status"] == "selected"
+    assert {attrs["cache_status"] for attrs in file_statuses.values()} == {"not_attempted"}
+    assert "document" not in node_types
+
+
+def test_directory_corpus_scan_only_honors_total_byte_budget(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+    (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
+
+    first_size = (docs / "a.md").stat().st_size
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_total_bytes=first_size,
+        scan_only=True,
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_statuses = {
+        n["attributes"]["relative_path"]: n["attributes"]["status"]
+        for n in graph["nodes"]
+        if n.get("attributes", {}).get("type") == "file"
+    }
+
+    assert manifest["attributes"]["scan_only"] is True
+    assert manifest["attributes"]["scan_only_selected_file_count"] == 1
+    assert manifest["attributes"]["extracted_file_count"] == 0
+    assert manifest["attributes"]["max_total_bytes_reached"] is True
+    assert manifest["attributes"]["skipped_by_reason"] == {"max_total_bytes_exceeded": 1}
+    assert file_statuses == {"a.md": "selected", "b.md": "skipped"}
+
+
 def test_cli_accepts_max_scan_entries(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -1246,6 +1317,33 @@ def test_cli_accepts_max_scan_entries(tmp_path):
     assert exit_code == 0
     assert manifest["attributes"]["max_scan_entries"] == 1
     assert manifest["attributes"]["max_scan_entries_reached"] is True
+
+
+def test_cli_accepts_scan_only(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    output = tmp_path / "graph.json"
+    (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
+
+    exit_code = main(
+        [
+            str(docs),
+            "--graph",
+            "knowledge",
+            "--scan-only",
+            "--output",
+            str(output),
+        ]
+    )
+
+    graph = json.loads(output.read_text(encoding="utf-8"))
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+    file_attrs = next(n["attributes"] for n in graph["nodes"] if n.get("attributes", {}).get("type") == "file")
+
+    assert exit_code == 0
+    assert manifest["attributes"]["scan_only"] is True
+    assert manifest["attributes"]["extracted_file_count"] == 0
+    assert file_attrs["status"] == "selected"
 
 
 def test_cli_accepts_extension_filters(tmp_path):

@@ -128,6 +128,14 @@ def main(argv: List[str] | None = None) -> int:
         help="Rebuild cached per-file graphs instead of reading existing cache entries",
     )
     parser.add_argument(
+        "--scan-only",
+        action="store_true",
+        help=(
+            "Only scan and report directory selection/skips without loading "
+            "selected files, using cache entries, or adding document graphs"
+        ),
+    )
+    parser.add_argument(
         "--max-file-reference-links",
         type=int,
         help=(
@@ -184,6 +192,7 @@ def main(argv: List[str] | None = None) -> int:
         cache_path=args.cache,
         output_path=args.output,
         refresh_cache=args.refresh_cache,
+        scan_only=args.scan_only,
         max_file_reference_links=max_file_reference_links,
         max_cross_document_links=max_cross_document_links,
     )

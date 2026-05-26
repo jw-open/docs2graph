@@ -90,6 +90,7 @@ doc2graph ./exports --graph all --max-total-bytes 1073741824 --output corpus.gra
 doc2graph ./exports --graph all --max-depth 2 --output corpus.graph.json
 doc2graph ./exports --graph all --max-scan-entries 100000 --output corpus.graph.json
 doc2graph ./exports --graph all --extension md --extension pdf --output corpus.graph.json
+doc2graph ./exports --graph all --scan-only --output corpus.scan.graph.json
 doc2graph ./exports --graph all --follow-symlinks --output corpus.graph.json
 doc2graph ./exports --graph all --max-file-reference-links 50000 --output corpus.graph.json
 doc2graph ./exports --graph all --max-cross-document-links 50000 --output corpus.graph.json
@@ -135,6 +136,12 @@ Large corpora are handled by deterministic limits:
   `--extension md --extension pdf`. Supported files with other suffixes are
   counted as `extension_filter_mismatch` skips, while unsupported files are
   still reported separately as `unsupported_extension`.
+- `--scan-only`: build a deterministic corpus scan graph without loading
+  selected files, reading or writing cache entries, or adding per-document
+  extraction graphs. Selected files are materialized as `file` nodes with
+  `status: selected`; traversal filters, skipped-file reporting, per-file byte
+  limits, and cumulative byte budgets still apply so the output can be used to
+  audit a large run before extraction.
 - `--skip-report-limit N`: cap the total number of omitted files listed as
   `skipped_file` or extraction-error nodes while still preserving aggregate
   skip counts and a deterministic SHA-256 digest of skipped path records. The
@@ -228,6 +235,7 @@ explicit cross-document link cap was reached,
 the number of explicit relative file links resolved and whether an explicit
 file-reference link cap was reached,
 active include/exclude patterns, extracted-file byte counts, scan budget state,
+whether the run was scan-only and how many files were selected without extraction,
 whether a max-files limit intentionally truncated traversal,
 failed-file counts, and skip reasons
 such as unsupported extensions, include-filter mismatches, max-file limits,

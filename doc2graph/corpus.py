@@ -192,6 +192,7 @@ def build_corpus_graph(
     cache_path: str | Path | None = None,
     output_path: str | Path | None = None,
     refresh_cache: bool = False,
+    scan_only: bool = False,
     max_file_reference_links: int | None = None,
     max_cross_document_links: int | None = None,
 ) -> Dict[str, Any]:
@@ -236,12 +237,12 @@ def build_corpus_graph(
     selected_file_sizes: Dict[Path, int | None] = {}
     cache_load = (
         _load_cache_with_status(cache_path)
-        if cache_path is not None
+        if cache_path is not None and not scan_only
         else CacheLoad(cache=_empty_cache(), status="disabled", entry_count=0)
     )
     cache = cache_load.cache
     cache_stats = {
-        "enabled": cache_path is not None,
+        "enabled": cache_path is not None and not scan_only,
         "path": str(cache_path) if cache_path is not None else None,
         "load_status": cache_load.status,
         "entry_count_before": cache_load.entry_count,
@@ -301,6 +302,8 @@ def build_corpus_graph(
         "max_total_bytes_reached": False,
         "extracted_file_count": 0,
         "extracted_total_bytes": 0,
+        "scan_only": scan_only,
+        "scan_only_selected_file_count": 0,
         "recursive": recursive,
         "follow_symlinks": follow_symlinks,
         "extraction_method": "static",
@@ -353,6 +356,7 @@ def build_corpus_graph(
                 "skipped_file_count_is_complete": not scan.scan_truncated,
                 "recursive": recursive,
                 "follow_symlinks": follow_symlinks,
+                "scan_only": scan_only,
                 "extraction_method": "static",
             },
         ),
@@ -386,6 +390,8 @@ def build_corpus_graph(
     extracted_file_count = 0
     failed_file_count = 0
     extracted_total_bytes = 0
+    budget_total_bytes = 0
+    scan_only_selected_file_count = 0
     total_report_limit = max(0, skip_report_limit)
     budget_exhausted = False
     active_cache_keys: set[str] = set()
@@ -427,7 +433,7 @@ def build_corpus_graph(
                 attributes={
                     "path_type": "file",
                     "max_total_bytes": max_total_bytes,
-                    "current_total_bytes": extracted_total_bytes,
+                    "current_total_bytes": budget_total_bytes,
                     "size_bytes": size,
                 },
             )
@@ -458,7 +464,7 @@ def build_corpus_graph(
         if (
             max_total_bytes is not None
             and size is not None
-            and extracted_total_bytes + size > max_total_bytes
+            and budget_total_bytes + size > max_total_bytes
         ):
             budget_exhausted = True
             attrs["status"] = "skipped"
@@ -477,10 +483,18 @@ def build_corpus_graph(
                 attributes={
                     "path_type": "file",
                     "max_total_bytes": max_total_bytes,
-                    "current_total_bytes": extracted_total_bytes,
+                    "current_total_bytes": budget_total_bytes,
                     "size_bytes": size,
                 },
             )
+            continue
+
+        if scan_only:
+            attrs["status"] = "selected"
+            attrs["cache_status"] = "not_attempted"
+            scan_only_selected_file_count += 1
+            if size is not None:
+                budget_total_bytes += size
             continue
 
         try:
@@ -572,6 +586,7 @@ def build_corpus_graph(
         extracted_file_count += 1
         if size is not None:
             extracted_total_bytes += size
+            budget_total_bytes += size
 
     corpus_graph = {"nodes": nodes, "edges": edges, "current_node_id": root_id}
     for reason, count in runtime_skipped_by_reason.items():
@@ -613,6 +628,7 @@ def build_corpus_graph(
     manifest_attrs["extracted_file_count"] = extracted_file_count
     manifest_attrs["failed_file_count"] = failed_file_count
     manifest_attrs["extracted_total_bytes"] = extracted_total_bytes
+    manifest_attrs["scan_only_selected_file_count"] = scan_only_selected_file_count
     manifest_attrs["cache_hits"] = cache_stats["hits"]
     manifest_attrs["cache_misses"] = cache_stats["misses"]
     manifest_attrs["cache_writes"] = cache_stats["writes"]
@@ -624,7 +640,7 @@ def build_corpus_graph(
     nodes[0]["attributes"]["extracted_file_count"] = extracted_file_count
     nodes[0]["attributes"]["failed_file_count"] = failed_file_count
     nodes[0]["attributes"]["extracted_total_bytes"] = extracted_total_bytes
-    if cache_path is not None:
+    if cache_path is not None and not scan_only:
         prune_status = _cache_prune_status(
             scan,
             recursive=recursive,
@@ -649,6 +665,8 @@ def build_corpus_graph(
         manifest_attrs["cache_file_updated"] = cache_write.updated
         manifest_attrs["cache_write_status"] = cache_write.status
         manifest_attrs["cache_write_error"] = cache_write.error_message
+    elif cache_path is not None and scan_only:
+        manifest_attrs["cache_write_status"] = "skipped_scan_only"
     merged = _merge_graphs([corpus_graph, *graph_parts])
     file_reference_links = _add_corpus_file_reference_links(
         merged,
