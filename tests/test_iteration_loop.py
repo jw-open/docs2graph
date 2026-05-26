@@ -68,7 +68,7 @@ def test_loop_command_invokes_doc2graph_iterate(tmp_path):
 
     command = _build_command(args)
 
-    assert command[:3] == [command[0], "-m", "doc2graph.iterate"]
+    assert command[:3] == [command[0], "-m", "docs2graph.iterate"]
     assert "--interval-minutes" in command
     assert "--commit-push" in command
     assert "--codex" in command
@@ -81,17 +81,17 @@ def test_committable_paths_exclude_runtime_files(monkeypatch, tmp_path):
                 " M DOC2GRAPH_PROGRESS.md\n"
                 " M DOC2GRAPH_NEXT_PROMPT.md\n"
                 " M .doc2graph-runs/demo.json\n"
-                " M doc2graph/cli.py\n"
+                " M docs2graph/cli.py\n"
                 " M tests/test_cli.py\n"
             )
 
         return Result()
 
-    monkeypatch.setattr("doc2graph.iterate._run", fake_run)
+    monkeypatch.setattr("docs2graph.iterate._run", fake_run)
 
     paths = _committable_changed_paths(Path("/repo"))
 
-    assert Path("doc2graph/cli.py") in paths
+    assert Path("docs2graph/cli.py") in paths
     assert Path("tests/test_cli.py") in paths
     assert Path("DOC2GRAPH_PROGRESS.md") not in paths
     assert not any(str(path).startswith(".doc2graph-runs") for path in paths)

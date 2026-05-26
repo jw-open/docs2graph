@@ -56,7 +56,7 @@ def _build_command(args: argparse.Namespace) -> list[str]:
     command = [
         sys.executable,
         "-m",
-        "doc2graph.iterate",
+        "docs2graph.iterate",
         str(Path(args.path).resolve()),
         "--graph",
         args.graph,

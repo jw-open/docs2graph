@@ -25,7 +25,7 @@ def test_google_loader_decodes_plain_text_response():
     response.read.return_value = b"Architecture notes"
     response.headers.get.return_value = "text/plain; charset=utf-8"
 
-    with patch("doc2graph.loaders.google.urlopen", return_value=response):
+    with patch("docs2graph.loaders.google.urlopen", return_value=response):
         text = load_google_doc("https://docs.google.com/document/d/doc123/edit")
 
     assert text == "Architecture notes"
@@ -37,7 +37,7 @@ def test_generic_url_loader_parses_html_response():
     response.read.return_value = b"<h1>Title</h1><script>x()</script><p>Body</p>"
     response.headers.get.return_value = "text/html; charset=utf-8"
 
-    with patch("doc2graph.loaders.url.urlopen", return_value=response):
+    with patch("docs2graph.loaders.url.urlopen", return_value=response):
         text = load_url("https://example.com/page")
 
     assert "Title" in text
@@ -55,7 +55,7 @@ def test_pdf_loader_uses_native_text(tmp_path):
     pypdf = MagicMock()
     pypdf.PdfReader.return_value = reader
 
-    with patch("doc2graph.loaders.pdf._require_pypdf", return_value=pypdf):
+    with patch("docs2graph.loaders.pdf._require_pypdf", return_value=pypdf):
         text = load_pdf(str(pdf))
 
     assert "Native PDF text" in text
@@ -72,8 +72,8 @@ def test_pdf_loader_falls_back_to_ocr_when_native_empty(tmp_path):
     pypdf = MagicMock()
     pypdf.PdfReader.return_value = reader
 
-    with patch("doc2graph.loaders.pdf._require_pypdf", return_value=pypdf), \
-         patch("doc2graph.loaders.ocr.load_pdf_ocr", return_value="OCR text"):
+    with patch("docs2graph.loaders.pdf._require_pypdf", return_value=pypdf), \
+         patch("docs2graph.loaders.ocr.load_pdf_ocr", return_value="OCR text"):
         text = load_pdf(str(pdf))
 
     assert text == "OCR text"
@@ -96,7 +96,7 @@ def test_cli_media_graph_uses_ocr_text(tmp_path):
     image = tmp_path / "chart.png"
     image.write_bytes(b"fake")
 
-    with patch("doc2graph.loaders.ocr.load_ocr", return_value="Legend revenue by quarter"):
+    with patch("docs2graph.loaders.ocr.load_ocr", return_value="Legend revenue by quarter"):
         graph = build_graph(str(image), graph_type="media")
 
     assert graph["current_node_id"].startswith("media:")
@@ -107,7 +107,7 @@ def test_cli_accepts_media_graph_choice(tmp_path):
     image = tmp_path / "chart.png"
     image.write_bytes(b"fake")
 
-    with patch("doc2graph.loaders.ocr.load_ocr", return_value="chart text"):
+    with patch("docs2graph.loaders.ocr.load_ocr", return_value="chart text"):
         graph = build_graph(str(image), graph_type="all")
 
     assert any(node.get("attributes", {}).get("type") == "media_document" for node in graph["nodes"])

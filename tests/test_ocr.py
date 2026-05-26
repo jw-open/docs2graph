@@ -22,7 +22,7 @@ from docs2graph.loaders.ocr import (
     load_pdf_ocr,
 )
 
-_MODULE = "doc2graph.loaders.ocr"
+_MODULE = "docs2graph.loaders.ocr"
 
 
 # ---------------------------------------------------------------------------

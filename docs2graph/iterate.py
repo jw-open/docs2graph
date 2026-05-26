@@ -141,7 +141,7 @@ def _commit_and_push(repo_root: Path, message: str, paths: list[Path]) -> bool:
 
 def _committable_changed_paths(repo_root: Path) -> list[Path]:
     result = _run(["git", "status", "--porcelain"], repo_root)
-    allowed_roots = {"doc2graph", "tests", "examples", "benchmarks"}
+    allowed_roots = {"docs2graph", "tests", "examples", "benchmarks"}
     allowed_names = {"README.md", "pyproject.toml", ".gitignore", "LICENSE"}
     blocked_names = {"DOC2GRAPH_PROGRESS.md", "DOC2GRAPH_NEXT_PROMPT.md"}
     paths: list[Path] = []
