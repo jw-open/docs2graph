@@ -14,7 +14,7 @@ def _require_pypdf():
     except ImportError as exc:
         raise ImportError(
             "pypdf is required for native PDF text extraction. "
-            "Install it with: pip install doc2graph[pdf]"
+            "Install it with: pip install docs2graph[pdf]"
         ) from exc
 
 

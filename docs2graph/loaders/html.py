@@ -87,7 +87,7 @@ def load_html(path: str) -> str:
 
     Example
     -------
-    >>> from doc2graph.loaders.html import load_html
+    >>> from docs2graph.loaders.html import load_html
     >>> text = load_html("page.html")
     """
     p = Path(path)
@@ -121,7 +121,7 @@ def parse_html_string(html: str) -> str:
 
     Example
     -------
-    >>> from doc2graph.loaders.html import parse_html_string
+    >>> from docs2graph.loaders.html import parse_html_string
     >>> text = parse_html_string("<h1>Hello</h1><p>World</p>")
     >>> assert "Hello" in text and "World" in text
     """

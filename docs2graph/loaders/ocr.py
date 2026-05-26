@@ -9,14 +9,14 @@ Installation
 ------------
 Minimal (images only)::
 
-    pip install doc2graph[ocr]
+    pip install docs2graph[ocr]
     # also install the Tesseract binary:
     # Ubuntu/Debian: sudo apt install tesseract-ocr
     # macOS:         brew install tesseract
 
 PDF pages::
 
-    pip install doc2graph[ocr,pdf]
+    pip install docs2graph[ocr,pdf]
     # Ubuntu/Debian: sudo apt install tesseract-ocr poppler-utils
     # macOS:         brew install tesseract poppler
 
@@ -43,7 +43,7 @@ def _require_pytesseract():
     except ImportError:
         raise ImportError(
             "pytesseract is required for OCR. "
-            "Install it with: pip install doc2graph[ocr]  "
+            "Install it with: pip install docs2graph[ocr]  "
             "(and ensure the Tesseract binary is installed on your system)"
         )
 
@@ -54,7 +54,7 @@ def _require_pil():
         return Image
     except ImportError:
         raise ImportError(
-            "Pillow is required for OCR. Install it with: pip install doc2graph[ocr]"
+            "Pillow is required for OCR. Install it with: pip install docs2graph[ocr]"
         )
 
 
@@ -65,7 +65,7 @@ def _require_pdf2image():
     except ImportError:
         raise ImportError(
             "pdf2image is required for PDF OCR. "
-            "Install it with: pip install doc2graph[pdf]  "
+            "Install it with: pip install docs2graph[pdf]  "
             "(and ensure poppler-utils is installed on your system)"
         )
 
@@ -108,7 +108,7 @@ def load_image_ocr(
 
     Example
     -------
-    >>> from doc2graph.loaders.ocr import load_image_ocr
+    >>> from docs2graph.loaders.ocr import load_image_ocr
     >>> text = load_image_ocr("scan.png")
     >>> text = load_image_ocr("receipt.jpg", lang="eng+fra", dpi=400)
     """
@@ -179,7 +179,7 @@ def load_pdf_ocr(
 
     Example
     -------
-    >>> from doc2graph.loaders.ocr import load_pdf_ocr
+    >>> from docs2graph.loaders.ocr import load_pdf_ocr
     >>> text = load_pdf_ocr("report.pdf")
     >>> first_page = load_pdf_ocr("report.pdf", pages=1)
     >>> selected = load_pdf_ocr("report.pdf", pages=[1, 2, 5])
@@ -264,7 +264,7 @@ def load_ocr(
 
     Example
     -------
-    >>> from doc2graph.loaders.ocr import load_ocr
+    >>> from docs2graph.loaders.ocr import load_ocr
     >>> text = load_ocr("invoice.png")
     >>> text = load_ocr("contract.pdf", pages=[1, 2])
     """

@@ -18,7 +18,7 @@ def load_url(source: str, timeout: float = 30.0) -> str:
     if is_google_workspace_url(source):
         return load_google_doc(source, timeout=timeout)
 
-    request = Request(source, headers={"User-Agent": "doc2graph/0.3"})
+    request = Request(source, headers={"User-Agent": "docs2graph/0.3"})
     with urlopen(request, timeout=timeout) as response:
         body = response.read()
         content_type = response.headers.get("content-type", "")

@@ -1,5 +1,5 @@
 """
-doc2graph — extract knowledge graphs from documents.
+docs2graph — extract knowledge graphs from documents.
 
 Query what's in your files without dumping the whole text into a prompt.
 """

@@ -1,9 +1,9 @@
 import argparse
 from pathlib import Path
 
-from doc2graph.iterate import _committable_changed_paths
-from doc2graph.loop import _build_command
-from doc2graph.prompt import TestResult, build_iteration_prompt, summarize_graph
+from docs2graph.iterate import _committable_changed_paths
+from docs2graph.loop import _build_command
+from docs2graph.prompt import TestResult, build_iteration_prompt, summarize_graph
 
 
 def test_summarize_graph_reports_health_and_types():

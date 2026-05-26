@@ -2,11 +2,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from doc2graph.cli import build_graph
-from doc2graph.extractors.media import extract_media_graph
-from doc2graph.loaders.google import _to_export_url, load_google_doc
-from doc2graph.loaders.pdf import load_pdf
-from doc2graph.loaders.url import load_url
+from docs2graph.cli import build_graph
+from docs2graph.extractors.media import extract_media_graph
+from docs2graph.loaders.google import _to_export_url, load_google_doc
+from docs2graph.loaders.pdf import load_pdf
+from docs2graph.loaders.url import load_url
 
 
 def test_google_doc_url_converts_to_text_export():

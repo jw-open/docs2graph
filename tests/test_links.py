@@ -1,8 +1,8 @@
 """Tests for cross-document link detection."""
 
 import pytest
-from doc2graph import DocumentGraph
-from doc2graph.extractors.links import detect_cross_doc_links, enrich_graph_with_links
+from docs2graph import DocumentGraph
+from docs2graph.extractors.links import detect_cross_doc_links, enrich_graph_with_links
 
 
 DOCS = [

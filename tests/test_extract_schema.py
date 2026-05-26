@@ -1,7 +1,7 @@
 """Tests for doc2graph.extract_schema_graph()."""
 
 import pytest
-from doc2graph.extractors.schema import extract_schema_graph
+from docs2graph.extractors.schema import extract_schema_graph
 
 # ---------------------------------------------------------------------------
 # Format 1: markdown pipe tables

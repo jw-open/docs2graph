@@ -54,7 +54,7 @@ def load_csv(
 
     Example
     -------
-    >>> from doc2graph.loaders.csv import load_csv
+    >>> from docs2graph.loaders.csv import load_csv
     >>> text = load_csv("data.csv")
     >>> text = load_csv("data.tsv", delimiter="\\t", max_rows=100)
     """

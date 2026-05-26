@@ -33,7 +33,7 @@ class DocumentGraph:
 
     Load from a Markdown file
     -------------------------
-    >>> from doc2graph.loaders.markdown import load_markdown
+    >>> from docs2graph.loaders.markdown import load_markdown
     >>> g = DocumentGraph.from_markdown("paper.md")
     >>> context = g.rank("what is the main contribution?", k=5)
     """

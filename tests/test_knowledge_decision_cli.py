@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from doc2graph import DocumentGraph, extract_decision_graph, extract_knowledge_graph
-from doc2graph.cli import build_graph, main
-from doc2graph.corpus import build_corpus_graph
+from docs2graph import DocumentGraph, extract_decision_graph, extract_knowledge_graph
+from docs2graph.cli import build_graph, main
+from docs2graph.corpus import build_corpus_graph
 
 
 PAPER = """# Abstract
@@ -1228,7 +1228,7 @@ def test_directory_corpus_scan_only_reports_selection_without_extracting_or_cach
     (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
     (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
 
-    from doc2graph import cli
+    from docs2graph import cli
 
     def fail_if_extracted(path, graph_type="knowledge"):
         raise AssertionError(f"unexpected extraction for {path}")
@@ -1850,8 +1850,8 @@ def test_directory_corpus_cache_records_relevant_loader_dependency_versions(tmp_
     source = docs / "deck.pptx"
     source.write_bytes(b"placeholder pptx bytes")
 
-    from doc2graph import corpus
-    from doc2graph import cli
+    from docs2graph import corpus
+    from docs2graph import cli
 
     def fake_version(package):
         if package == "python-pptx":
@@ -1892,8 +1892,8 @@ def test_directory_corpus_cache_invalidates_when_loader_dependency_version_chang
     source = docs / "report.docx"
     source.write_bytes(b"placeholder docx bytes")
 
-    from doc2graph import corpus
-    from doc2graph import cli
+    from docs2graph import corpus
+    from docs2graph import cli
 
     version = {"python-docx": "0.8.11"}
     calls = []
@@ -1945,7 +1945,7 @@ def test_directory_corpus_cache_does_not_track_dependency_versions_for_text_form
     cache = tmp_path / "doc2graph-cache.json"
     (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
 
-    from doc2graph import corpus
+    from docs2graph import corpus
 
     def fail_if_called(package):
         raise AssertionError(f"unexpected dependency lookup for {package}")
@@ -1966,7 +1966,7 @@ def test_directory_corpus_reuses_cached_content_digests_for_unchanged_files(tmp_
     (docs / "a.md").write_text("# A\n\nAlpha document.", encoding="utf-8")
     (docs / "b.md").write_text("# B\n\nBeta document.", encoding="utf-8")
 
-    from doc2graph import corpus
+    from docs2graph import corpus
 
     original_file_sha256 = corpus._file_sha256
     calls = []
@@ -2097,7 +2097,7 @@ def test_directory_corpus_marks_failed_file_status_and_manifest(tmp_path, monkey
     good.write_text("# Good\n\nExtractable document.", encoding="utf-8")
     bad.write_text("# Bad\n\nBroken document.", encoding="utf-8")
 
-    from doc2graph import cli
+    from docs2graph import cli
 
     original_build_file_graph = cli.build_file_graph
 

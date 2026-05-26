@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Import at module level — the ocr module itself has no top-level heavy imports
-from doc2graph.loaders.ocr import (
+from docs2graph.loaders.ocr import (
     _require_pdf2image,
     _require_pil,
     _require_pytesseract,

@@ -5,7 +5,7 @@ Simulates a typical use case: given a question and a set of candidate
 documents, rank the most relevant ones and pass only those to your LLM.
 """
 
-from doc2graph import DocumentGraph
+from docs2graph import DocumentGraph
 
 # Simulate a small document corpus (like HotpotQA context)
 documents = [

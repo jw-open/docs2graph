@@ -8,7 +8,7 @@ Installation
 ------------
 ::
 
-    pip install doc2graph[pptx]
+    pip install docs2graph[pptx]
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def _require_pptx():
     except ImportError:
         raise ImportError(
             "python-pptx is required for PPTX loading. "
-            "Install it with: pip install doc2graph[pptx]"
+            "Install it with: pip install docs2graph[pptx]"
         )
 
 
@@ -59,7 +59,7 @@ def load_pptx(path: str, slide_markers: bool = True) -> str:
 
     Example
     -------
-    >>> from doc2graph.loaders.pptx import load_pptx
+    >>> from docs2graph.loaders.pptx import load_pptx
     >>> text = load_pptx("deck.pptx")
     >>> text = load_pptx("slides.pptx", slide_markers=False)
     """

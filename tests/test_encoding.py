@@ -3,11 +3,11 @@ Tests for encoding detection and multi-encoding support in text/HTML/CSV loaders
 """
 
 import pytest
-from doc2graph.loaders.text import load_text, _detect_encoding
-from doc2graph.loaders.html import load_html
-from doc2graph.loaders.csv import load_csv
-from doc2graph.loaders.auto import load_document
-from doc2graph.loaders.markdown import load_markdown
+from docs2graph.loaders.text import load_text, _detect_encoding
+from docs2graph.loaders.html import load_html
+from docs2graph.loaders.csv import load_csv
+from docs2graph.loaders.auto import load_document
+from docs2graph.loaders.markdown import load_markdown
 
 
 # ---------------------------------------------------------------------------

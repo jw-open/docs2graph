@@ -21,7 +21,7 @@ Understands two common schema documentation formats:
 The output GraphDict is compatible with ``graph2sql.SchemaGraph.from_dict()``,
 so the two packages can be chained::
 
-    from doc2graph.extractors.schema import extract_schema_graph
+    from docs2graph.extractors.schema import extract_schema_graph
     from graph2sql import SchemaGraph
 
     graph_dict = extract_schema_graph(schema_doc_text)
@@ -73,7 +73,7 @@ def extract_schema_graph(text: str, source: str = "") -> GraphDict:
     ... | id     | INT          |
     ... | name   | VARCHAR(100) |
     ... '''
-    >>> from doc2graph.extractors.schema import extract_schema_graph
+    >>> from docs2graph.extractors.schema import extract_schema_graph
     >>> g = extract_schema_graph(text)
     >>> g["nodes"][0]["label"]
     'customers'

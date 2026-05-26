@@ -111,7 +111,7 @@ def load_code(
 
     Example
     -------
-    >>> from doc2graph.loaders.code import load_code
+    >>> from docs2graph.loaders.code import load_code
     >>> text = load_code("main.py")
     >>> text = load_code("app.js", tag_language=False)
     >>> text = load_code("legacy.py", encoding="latin-1")

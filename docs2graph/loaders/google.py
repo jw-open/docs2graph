@@ -51,7 +51,7 @@ def _to_export_url(source: str) -> str:
 
 
 def _fetch(url: str, timeout: float) -> tuple[bytes, str]:
-    headers = {"User-Agent": "doc2graph/0.3"}
+    headers = {"User-Agent": "docs2graph/0.3"}
     token = os.environ.get("GOOGLE_DOCS_BEARER_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"

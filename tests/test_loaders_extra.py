@@ -11,10 +11,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from doc2graph.loaders.html import load_html, parse_html_string
-from doc2graph.loaders.csv import load_csv
-from doc2graph.loaders.json import load_json
-from doc2graph.loaders.auto import load_document
+from docs2graph.loaders.html import load_html, parse_html_string
+from docs2graph.loaders.csv import load_csv
+from docs2graph.loaders.json import load_json
+from docs2graph.loaders.auto import load_document
 
 _DOCX_MOD = "doc2graph.loaders.docx"
 _PPTX_MOD = "doc2graph.loaders.pptx"
@@ -256,7 +256,7 @@ class TestLoadDocx:
         docx_mod = self._fake_docx_module(paragraphs=["Hello", "World"])
 
         with patch(f"{_DOCX_MOD}._require_docx", return_value=docx_mod):
-            from doc2graph.loaders.docx import load_docx
+            from docs2graph.loaders.docx import load_docx
             text = load_docx(str(f))
 
         assert "Hello" in text
@@ -268,7 +268,7 @@ class TestLoadDocx:
         docx_mod = self._fake_docx_module(paragraphs=["Good", "", "  ", "Text"])
 
         with patch(f"{_DOCX_MOD}._require_docx", return_value=docx_mod):
-            from doc2graph.loaders.docx import load_docx
+            from docs2graph.loaders.docx import load_docx
             text = load_docx(str(f))
 
         lines = [l for l in text.split("\n") if l]
@@ -283,7 +283,7 @@ class TestLoadDocx:
         )
 
         with patch(f"{_DOCX_MOD}._require_docx", return_value=docx_mod):
-            from doc2graph.loaders.docx import load_docx
+            from docs2graph.loaders.docx import load_docx
             text = load_docx(str(f))
 
         assert "Name" in text
@@ -298,26 +298,26 @@ class TestLoadDocx:
         )
 
         with patch(f"{_DOCX_MOD}._require_docx", return_value=docx_mod):
-            from doc2graph.loaders.docx import load_docx
+            from docs2graph.loaders.docx import load_docx
             text = load_docx(str(f), include_tables=False)
 
         assert "TableCell" not in text
         assert "Body text" in text
 
     def test_file_not_found_raises(self):
-        from doc2graph.loaders.docx import load_docx
+        from docs2graph.loaders.docx import load_docx
         with pytest.raises(FileNotFoundError):
             load_docx("/no/such/file.docx")
 
     def test_wrong_extension_raises(self, tmp_path):
         f = tmp_path / "file.pdf"
         f.write_bytes(b"data")
-        from doc2graph.loaders.docx import load_docx
+        from docs2graph.loaders.docx import load_docx
         with pytest.raises(ValueError, match=".docx"):
             load_docx(str(f))
 
     def test_missing_python_docx_raises(self):
-        from doc2graph.loaders.docx import _require_docx
+        from docs2graph.loaders.docx import _require_docx
         with patch.dict(sys.modules, {"docx": None}):
             with pytest.raises(ImportError, match="python-docx"):
                 _require_docx()
@@ -359,7 +359,7 @@ class TestLoadPptx:
         Presentation = self._fake_pptx_presentation([["Title slide"], ["Second slide"]])
 
         with patch(f"{_PPTX_MOD}._require_pptx", return_value=Presentation):
-            from doc2graph.loaders.pptx import load_pptx
+            from docs2graph.loaders.pptx import load_pptx
             text = load_pptx(str(f))
 
         assert "Title slide" in text
@@ -371,7 +371,7 @@ class TestLoadPptx:
         Presentation = self._fake_pptx_presentation([["Slide one"], ["Slide two"]])
 
         with patch(f"{_PPTX_MOD}._require_pptx", return_value=Presentation):
-            from doc2graph.loaders.pptx import load_pptx
+            from docs2graph.loaders.pptx import load_pptx
             text = load_pptx(str(f))
 
         assert "--- Slide 1 ---" in text
@@ -383,7 +383,7 @@ class TestLoadPptx:
         Presentation = self._fake_pptx_presentation([["Content"]])
 
         with patch(f"{_PPTX_MOD}._require_pptx", return_value=Presentation):
-            from doc2graph.loaders.pptx import load_pptx
+            from docs2graph.loaders.pptx import load_pptx
             text = load_pptx(str(f), slide_markers=False)
 
         assert "--- Slide" not in text
@@ -396,25 +396,25 @@ class TestLoadPptx:
         Presentation = self._fake_pptx_presentation([["Real content"], []])
 
         with patch(f"{_PPTX_MOD}._require_pptx", return_value=Presentation):
-            from doc2graph.loaders.pptx import load_pptx
+            from docs2graph.loaders.pptx import load_pptx
             text = load_pptx(str(f))
 
         assert "--- Slide 2 ---" not in text
 
     def test_file_not_found_raises(self):
-        from doc2graph.loaders.pptx import load_pptx
+        from docs2graph.loaders.pptx import load_pptx
         with pytest.raises(FileNotFoundError):
             load_pptx("/no/such/file.pptx")
 
     def test_wrong_extension_raises(self, tmp_path):
         f = tmp_path / "file.pdf"
         f.write_bytes(b"data")
-        from doc2graph.loaders.pptx import load_pptx
+        from docs2graph.loaders.pptx import load_pptx
         with pytest.raises(ValueError, match=".pptx"):
             load_pptx(str(f))
 
     def test_missing_python_pptx_raises(self):
-        from doc2graph.loaders.pptx import _require_pptx
+        from docs2graph.loaders.pptx import _require_pptx
         with patch.dict(sys.modules, {"pptx": None}):
             with pytest.raises(ImportError, match="python-pptx"):
                 _require_pptx()

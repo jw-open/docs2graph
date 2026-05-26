@@ -3,12 +3,45 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "doc2graph"
+name = "docs2graph"
 version = "0.3.0"
 description = "Extract knowledge graphs from documents. Rank relevant nodes with Personalized PageRank for LLM context. No LLM dependency — bring your own model."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"
+authors = [
+    { name = "jw-open", email = "176761431+jw-open@users.noreply.github.com" },
+]
+keywords = [
+    "knowledge-graph",
+    "document-processing",
+    "rag",
+    "retrieval-augmented-generation",
+    "nlp",
+    "graph",
+    "pagerank",
+    "llm",
+    "context-engineering",
+    "pdf",
+    "markdown",
+    "information-extraction",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
+]
 dependencies = [
     "numpy>=1.21.0",
 ]
@@ -36,18 +69,29 @@ docx = [
 pptx = [
     "python-pptx>=0.6.21",
 ]
+all = [
+    "pypdf>=4.0",
+    "pytesseract>=0.3.10",
+    "Pillow>=9.0",
+    "pdf2image>=1.16",
+    "python-docx>=0.8.11",
+    "python-pptx>=0.6.21",
+]
 
 [project.urls]
-Repository = "https://github.com/jw-open/doc2graph"
+Homepage      = "https://github.com/jw-open/doc2graph"
+Repository    = "https://github.com/jw-open/doc2graph"
+Issues        = "https://github.com/jw-open/doc2graph/issues"
+Changelog     = "https://github.com/jw-open/doc2graph/blob/main/CHANGELOG.md"
 
 [project.scripts]
-doc2graph = "doc2graph.cli:main"
-doc2graph-iterate = "doc2graph.iterate:main"
-doc2graph-loop = "doc2graph.loop:main"
+docs2graph = "docs2graph.cli:main"
+docs2graph-iterate = "docs2graph.iterate:main"
+docs2graph-loop = "docs2graph.loop:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["doc2graph*"]
+include = ["docs2graph*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

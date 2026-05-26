@@ -1,7 +1,7 @@
 """Tests for DocumentGraph class."""
 
 import pytest
-from doc2graph import DocumentGraph
+from docs2graph import DocumentGraph
 
 
 @pytest.fixture

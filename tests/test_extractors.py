@@ -1,7 +1,7 @@
 """Tests for section extractor."""
 
 import pytest
-from doc2graph.extractors.section import extract_section_graph, extract_paragraph_graph
+from docs2graph.extractors.section import extract_section_graph, extract_paragraph_graph
 
 
 SAMPLE_MARKDOWN = """# Introduction

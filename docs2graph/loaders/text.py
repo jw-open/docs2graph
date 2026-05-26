@@ -85,7 +85,7 @@ def load_text(
 
     Example
     -------
-    >>> from doc2graph.loaders.text import load_text
+    >>> from docs2graph.loaders.text import load_text
     >>> text = load_text("doc.txt")                          # auto-detect
     >>> text = load_text("doc.txt", encoding="utf-16")       # explicit
     >>> text = load_text("legacy.txt", encoding="iso-8859-1")

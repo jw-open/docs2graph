@@ -1,9 +1,9 @@
 """Tests for the source code loader."""
 
 import pytest
-from doc2graph.corpus import build_corpus_graph
-from doc2graph.loaders.auto import load_document
-from doc2graph.loaders.code import load_code, detect_language
+from docs2graph.corpus import build_corpus_graph
+from docs2graph.loaders.auto import load_document
+from docs2graph.loaders.code import load_code, detect_language
 
 
 class TestDetectLanguage:

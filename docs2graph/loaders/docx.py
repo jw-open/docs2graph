@@ -8,7 +8,7 @@ Installation
 ------------
 ::
 
-    pip install doc2graph[docx]
+    pip install docs2graph[docx]
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def _require_docx():
     except ImportError:
         raise ImportError(
             "python-docx is required for DOCX loading. "
-            "Install it with: pip install doc2graph[docx]"
+            "Install it with: pip install docs2graph[docx]"
         )
 
 
@@ -59,7 +59,7 @@ def load_docx(path: str, include_tables: bool = True) -> str:
 
     Example
     -------
-    >>> from doc2graph.loaders.docx import load_docx
+    >>> from docs2graph.loaders.docx import load_docx
     >>> text = load_docx("report.docx")
     >>> text = load_docx("contract.docx", include_tables=False)
     """
