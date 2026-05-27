@@ -7,6 +7,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.2] — 2026-05-27
+
+### Fixed
+
+- `_detect_encoding` fallback now tries strict UTF-8 first; if that fails, falls back to ISO-8859-1 instead of UTF-8 with replacement characters — fixes Latin-1 encoded Markdown files being loaded with `\ufffd` replacement characters in environments without `charset-normalizer` or `chardet`
+- Added `charset-normalizer>=3.0` to `[dev]` extra so CI always has proper encoding detection
+
+---
+
 ## [0.3.1] — 2026-05-27
 
 ### Fixed

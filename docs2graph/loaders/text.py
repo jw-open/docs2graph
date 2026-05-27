@@ -47,7 +47,14 @@ def _detect_encoding(raw: bytes) -> str:
     except ImportError:
         pass
 
-    return "utf-8"
+    # No library available — try strict UTF-8; fall back to ISO-8859-1.
+    # ISO-8859-1 can decode any byte sequence without error, so it is a safe
+    # last resort for Western European legacy files.
+    try:
+        raw.decode("utf-8")
+        return "utf-8"
+    except UnicodeDecodeError:
+        return "iso-8859-1"
 
 
 def load_text(
