@@ -7,6 +7,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.1] — 2026-05-27
+
+### Fixed
+
+- Bumped `requires-python` to `>=3.10` — code uses `X | None` union syntax (PEP 604) which requires Python 3.10+; removed Python 3.9 from CI and publish matrices to fix the build
+
+---
+
 ## [0.3.0] — 2026-05-26
 
 ### Added
