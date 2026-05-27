@@ -2128,6 +2128,52 @@ def test_directory_corpus_marks_failed_file_status_and_manifest(tmp_path, monkey
     assert error["attributes"]["size_bytes"] == bad.stat().st_size
 
 
+def test_directory_corpus_manifest_reports_extension_counts(tmp_path, monkeypatch):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    good = docs / "good.md"
+    bad = docs / "bad.md"
+    large = docs / "large.txt"
+    unsupported = docs / "archive.bin"
+    good.write_text("# Good\n\nExtractable document.", encoding="utf-8")
+    bad.write_text("# Bad\n\nBroken document.", encoding="utf-8")
+    large.write_text("x" * 100, encoding="utf-8")
+    unsupported.write_bytes(b"\0\1\2")
+
+    from docs2graph import cli
+
+    original_build_file_graph = cli.build_file_graph
+
+    def fail_bad_file(path, graph_type="knowledge"):
+        if path == str(bad):
+            raise RuntimeError("boom")
+        return original_build_file_graph(path, graph_type)
+
+    monkeypatch.setattr(cli, "build_file_graph", fail_bad_file)
+
+    graph = build_corpus_graph(
+        str(docs),
+        graph_type="knowledge",
+        max_file_bytes=50,
+        skip_report_limit=10,
+    )
+    manifest = next(n for n in graph["nodes"] if n.get("attributes", {}).get("type") == "corpus_manifest")
+
+    assert manifest["attributes"]["selected_by_extension"] == {".md": 2, ".txt": 1}
+    assert manifest["attributes"]["extracted_by_extension"] == {".md": 1}
+    assert manifest["attributes"]["failed_by_extension"] == {".md": 1}
+    assert manifest["attributes"]["skipped_by_extension"] == {
+        ".bin": 1,
+        ".md": 1,
+        ".txt": 1,
+    }
+    assert manifest["attributes"]["skipped_by_reason"] == {
+        "file_too_large": 1,
+        "load_error": 1,
+        "unsupported_extension": 1,
+    }
+
+
 def test_directory_corpus_invalidates_cache_when_extraction_fingerprint_changes(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()

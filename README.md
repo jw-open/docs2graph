@@ -166,7 +166,7 @@ docs2graph ./docs --graph all --output corpus.graph.json
 
 ## Multi-document corpora
 
-Directory input is first-class. `doc2graph` walks supported formats, emits a corpus root with folder/file provenance nodes, resolves explicit relative links (`[ADR](adr/cache.md)`) into `links_to` edges, and adds deterministic cross-document `mentions` edges when one file explicitly names another's title, section, decision, or path-derived stem.
+Directory input is first-class. `doc2graph` walks supported formats, emits a corpus root with folder/file provenance nodes, records selected/extracted/failed/skipped counts by extension for large-corpus audits, resolves explicit relative links (`[ADR](adr/cache.md)`) into `links_to` edges, and adds deterministic cross-document `mentions` edges when one file explicitly names another's title, section, decision, or path-derived stem.
 
 ```bash
 # Process entire knowledge base
@@ -194,7 +194,7 @@ docs2graph ./docs --graph all --cache .doc2graph-cache.json --output corpus.grap
 |------|---------|-------------|
 | `--max-files N` | unlimited | Select at most N files; continues scanning for skip counts |
 | `--stop-after-max-files` | off | Stop scanning at first file beyond `--max-files` |
-| `--max-file-bytes N` | 5 MB | Skip files larger than N bytes |
+| `--max-file-bytes N` | 25 MB | Skip files larger than N bytes |
 | `--max-total-bytes N` | unlimited | Stop extracting after N cumulative bytes |
 | `--max-depth N` | unlimited | Bound recursive descent by subdirectory depth |
 | `--max-scan-entries N` | unlimited | Stop directory walk after N filesystem entries |

@@ -265,6 +265,7 @@ def build_corpus_graph(
         "type": "corpus_manifest",
         "source": str(root),
         "selected_file_count": len(files),
+        "selected_by_extension": _path_extension_counts(files),
         "selected_file_ordering": "relative_path_depth_first",
         "selected_file_paths_sha256": _paths_sha256(
             file_path.relative_to(root).as_posix() for file_path in files
@@ -275,6 +276,7 @@ def build_corpus_graph(
         "selected_total_bytes_is_complete": True,
         "skipped_file_count": scan.skipped_count,
         "skipped_by_reason": dict(sorted(scan.skipped_by_reason.items())),
+        "skipped_by_extension": dict(sorted(scan.skipped_by_extension.items())),
         "skipped_file_records_sha256": scan.skipped_records_digest.hexdigest(),
         "skipped_file_records_sha256_is_complete": not scan.scan_truncated,
         "reported_skipped_file_count": len(scan.skipped_samples),
@@ -301,7 +303,9 @@ def build_corpus_graph(
         "max_total_bytes": max_total_bytes,
         "max_total_bytes_reached": False,
         "extracted_file_count": 0,
+        "extracted_by_extension": {},
         "extracted_total_bytes": 0,
+        "failed_by_extension": {},
         "scan_only": scan_only,
         "scan_only_selected_file_count": 0,
         "recursive": recursive,
@@ -386,6 +390,9 @@ def build_corpus_graph(
         edges.append(make_edge(manifest_id, skipped_id, "skipped"))
 
     runtime_skipped_by_reason: Dict[str, int] = {}
+    runtime_skipped_by_extension: Dict[str, int] = {}
+    extracted_by_extension: Dict[str, int] = {}
+    failed_by_extension: Dict[str, int] = {}
     runtime_reported_skips = 0
     extracted_file_count = 0
     failed_file_count = 0
@@ -419,6 +426,7 @@ def build_corpus_graph(
         if budget_exhausted:
             attrs["status"] = "skipped"
             attrs["skip_reason"] = "max_total_bytes_exceeded"
+            _count_extension(runtime_skipped_by_extension, file_path)
             runtime_reported_skips += _add_runtime_skip(
                 nodes,
                 edges,
@@ -442,6 +450,7 @@ def build_corpus_graph(
         if max_file_bytes is not None and size is not None and size > max_file_bytes:
             attrs["status"] = "skipped"
             attrs["skip_reason"] = "file_too_large"
+            _count_extension(runtime_skipped_by_extension, file_path)
             runtime_reported_skips += _add_runtime_skip(
                 nodes,
                 edges,
@@ -469,6 +478,7 @@ def build_corpus_graph(
             budget_exhausted = True
             attrs["status"] = "skipped"
             attrs["skip_reason"] = "max_total_bytes_exceeded"
+            _count_extension(runtime_skipped_by_extension, file_path)
             runtime_reported_skips += _add_runtime_skip(
                 nodes,
                 edges,
@@ -554,6 +564,8 @@ def build_corpus_graph(
             attrs["error_type"] = type(exc).__name__
             attrs["error_message"] = str(exc)
             _count_skip(runtime_skipped_by_reason, "load_error")
+            _count_extension(runtime_skipped_by_extension, file_path)
+            _count_extension(failed_by_extension, file_path)
             _update_skip_digest(scan.skipped_records_digest, rel, "load_error", "file")
             if len(scan.skipped_samples) + runtime_reported_skips < total_report_limit:
                 error_id = _id("load_error", f"{rel}:{type(exc).__name__}:{exc}")
@@ -584,6 +596,7 @@ def build_corpus_graph(
         graph_parts.append(graph)
         attrs["status"] = "extracted"
         extracted_file_count += 1
+        _count_extension(extracted_by_extension, file_path)
         if size is not None:
             extracted_total_bytes += size
             budget_total_bytes += size
@@ -592,9 +605,12 @@ def build_corpus_graph(
     for reason, count in runtime_skipped_by_reason.items():
         scan.skipped_by_reason[reason] = scan.skipped_by_reason.get(reason, 0) + count
         scan.skipped_count += count
+    for extension, count in runtime_skipped_by_extension.items():
+        scan.skipped_by_extension[extension] = scan.skipped_by_extension.get(extension, 0) + count
     manifest_attrs["skipped_file_count"] = scan.skipped_count
     manifest_attrs["skipped_file_count_is_complete"] = not scan.scan_truncated
     manifest_attrs["skipped_by_reason"] = dict(sorted(scan.skipped_by_reason.items()))
+    manifest_attrs["skipped_by_extension"] = dict(sorted(scan.skipped_by_extension.items()))
     manifest_attrs["skipped_file_records_sha256"] = scan.skipped_records_digest.hexdigest()
     manifest_attrs["skipped_file_records_sha256_is_complete"] = not scan.scan_truncated
     manifest_attrs["selected_file_records_sha256"] = _selected_file_records_sha256(
@@ -626,7 +642,9 @@ def build_corpus_graph(
         scan.skipped_by_reason.get("max_total_bytes_exceeded", 0) > 0
     )
     manifest_attrs["extracted_file_count"] = extracted_file_count
+    manifest_attrs["extracted_by_extension"] = dict(sorted(extracted_by_extension.items()))
     manifest_attrs["failed_file_count"] = failed_file_count
+    manifest_attrs["failed_by_extension"] = dict(sorted(failed_by_extension.items()))
     manifest_attrs["extracted_total_bytes"] = extracted_total_bytes
     manifest_attrs["scan_only_selected_file_count"] = scan_only_selected_file_count
     manifest_attrs["cache_hits"] = cache_stats["hits"]
@@ -707,6 +725,7 @@ class SkippedFile:
 class CorpusScan:
     files: List[Path] = field(default_factory=list)
     skipped_by_reason: Dict[str, int] = field(default_factory=dict)
+    skipped_by_extension: Dict[str, int] = field(default_factory=dict)
     skipped_count: int = 0
     skipped_samples: List[SkippedFile] = field(default_factory=list)
     scanned_entry_count: int = 0
@@ -1695,6 +1714,7 @@ def _record_skipped(
     path_type: str = "file",
 ) -> None:
     _count_skip(result.skipped_by_reason, reason)
+    _count_extension(result.skipped_by_extension, path, path_type=path_type)
     result.skipped_count += 1
     _update_skip_digest(result.skipped_records_digest, rel, reason, path_type)
     if len(result.skipped_samples) < report_limit:
@@ -1711,6 +1731,29 @@ def _update_skip_digest(digest: Any, rel: str, reason: str, path_type: str) -> N
 
 def _count_skip(counts: Dict[str, int], reason: str) -> None:
     counts[reason] = counts.get(reason, 0) + 1
+
+
+def _path_extension_counts(paths: Iterable[Path]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for path in paths:
+        _count_extension(counts, path)
+    return dict(sorted(counts.items()))
+
+
+def _count_extension(
+    counts: Dict[str, int],
+    path: Path,
+    *,
+    path_type: str = "file",
+) -> None:
+    extension = _extension_key(path, path_type=path_type)
+    counts[extension] = counts.get(extension, 0) + 1
+
+
+def _extension_key(path: Path, *, path_type: str = "file") -> str:
+    if path_type == "directory":
+        return "<directory>"
+    return path.suffix.lower() or "<none>"
 
 
 def _id(prefix: str, value: str) -> str:

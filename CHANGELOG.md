@@ -7,6 +7,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Corpus manifest extension histograms: `selected_by_extension`, `extracted_by_extension`, `failed_by_extension`, and `skipped_by_extension` summarize large directory runs without requiring every skipped file to be materialized as a node
+
+---
+
 ## [0.3.2] — 2026-05-27
 
 ### Fixed
