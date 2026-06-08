@@ -1,4 +1,4 @@
-# doc2graph
+# docs2graph
 
 [![PyPI version](https://img.shields.io/pypi/v/doc2graph.svg)](https://pypi.org/project/doc2graph/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/doc2graph.svg)](https://pypi.org/project/doc2graph/)
